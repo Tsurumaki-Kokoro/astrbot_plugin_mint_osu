@@ -1,8 +1,9 @@
 """Parse Mint commands independently of AstrBot and preserve usernames with spaces."""
 import re
+import shlex
 from dataclasses import dataclass
 
-COMMAND_PATTERN = re.compile(r"^/?(statme|stat|pr|recent|bp|beatmap|bind|unbind|mode|minthelp)(?=\s|:|$)", re.I)
+COMMAND_PATTERN = re.compile(r"^/?(statme|stat|pr|recent|bp|beatmap|bind|unbind|mode|minthelp|nb|fix|analyze|history|scorehistory|score)(?=\s|:|#|$)", re.I)
 MODE_NAMES = {"osu": 0, "std": 0, "standard": 0, "taiko": 1, "catch": 2, "ctb": 2, "fruits": 2, "mania": 3}
 
 
@@ -15,6 +16,9 @@ class Command:
     last: int | None = None
     beatmap_id: int | None = None
     target_uid: str | None = None
+    days: int | None = None
+    mods: str | None = None
+    page: int = 1
 
 
 def parse_command(text: str, mentions: list[str]) -> Command:
@@ -27,11 +31,11 @@ def parse_command(text: str, mentions: list[str]) -> Command:
     if len(set(mentions)) > 1:
         raise ValueError("一次只能查询一位 @用户。")
     target = mentions[0] if mentions else None
-    if target and name not in {"stat", "pr", "recent", "bp"}:
+    if target and name not in {"stat", "pr", "recent", "bp", "nb", "fix", "analyze", "history", "score", "scorehistory"}:
         raise ValueError("这个命令不支持 @用户。")
 
     mode = None
-    if name in {"stat", "statme", "pr", "recent", "bp"}:
+    if name in {"stat", "statme", "pr", "recent", "bp", "nb", "fix", "analyze", "history", "score", "scorehistory"}:
         suffix = re.search(r":\s*([+-]?\d+)\s*$", tail)
         if suffix:
             mode = int(suffix[1])
@@ -40,6 +44,39 @@ def parse_command(text: str, mentions: list[str]) -> Command:
             tail = tail[:suffix.start()].strip()
         elif ":" in tail:
             raise ValueError("模式请放在末尾，使用 :0～:3。")
+    if name in {"nb", "history"}:
+        days = 1 if name == "nb" else 30
+        if tail:
+            if not re.fullmatch(r"#\s*[0-9]+", tail):
+                raise ValueError("天数请使用 #数字，例如 /nb #7 或 /history #30。")
+            days = int(tail[1:].strip())
+        maximum = 365 if name == "nb" else 3650
+        if not 1 <= days <= maximum:
+            raise ValueError(f"天数必须为 1～{maximum}。")
+        return Command(name, mode, target_uid=target, days=days)
+    if name in {"score", "scorehistory"}:
+        tokens = shlex.split(tail)
+        if not tokens or not re.fullmatch(r"[0-9]+", tokens[0]) or not 0 < int(tokens[0]) <= 2147483647:
+            raise ValueError(f"请使用 /{name} [@用户] 谱面ID，ID 必须为正整数。")
+        mods, page = None, 1
+        seen = set()
+        options = tokens[1:]
+        while options:
+            flag = options.pop(0)
+            if name != "scorehistory" or flag not in {"--mods", "--page"} or flag in seen or not options:
+                raise ValueError("scorehistory 支持 --mods HD,HR 和 --page 2；score 只接受谱面ID。")
+            seen.add(flag)
+            value = options.pop(0)
+            if flag == "--page":
+                if not value.isascii() or not value.isdigit() or not 1 <= int(value) <= 1000000:
+                    raise ValueError("页码必须为 1～1000000。")
+                page = int(value)
+            else:
+                items = value.upper().split(',')
+                if any(not re.fullmatch(r"[A-Z0-9]{2,4}", item) for item in items) or ("NM" in items and len(items) != 1):
+                    raise ValueError("Mods 使用逗号分隔的缩写，例如 HD,HR；NM 必须单独使用。")
+                mods = ','.join(dict.fromkeys(items))
+        return Command(name, mode, beatmap_id=int(tokens[0]), target_uid=target, mods=mods, page=page)
     if name == "stat":
         if target and tail:
             raise ValueError("用户名和 @用户只能选择一个。")

@@ -50,6 +50,40 @@ def event_for(parts, adapter="aiocqhttp", raw=None, wake=False, group=True):
 
 
 class ParsingTests(unittest.TestCase):
+    def test_history_days_use_hash_and_preserve_mode(self):
+        for text, name, days, mode in [("/nb", "nb", 1, None), ("/nb#7:3", "nb", 7, 3),
+                                      ("/history", "history", 30, None), ("/history #90:1", "history", 90, 1)]:
+            with self.subTest(text=text):
+                command = arguments.parse_command(text, ["200"])
+                self.assertEqual((command.name, command.days, command.mode, command.target_uid), (name, days, mode, "200"))
+
+    def test_extended_query_contracts(self):
+        cases = [("/nb #7:3", "/score/new_best_plays", {"days": 7}),
+                 ("/fix:3", "/score/fix", {}),
+                 ("/analyze:3", "/user_info/extra/performance_analyze", {"theme": "default"}),
+                 ("/history #90:3", "/user_info/history", {"days": 90, "format": "png"}),
+                 ("/score 123:3", "/score/user_score", {"beatmap_id": 123, "theme": "yaowan"}),
+                 ("/scorehistory 123 --mods hd,hr --page 2:3", "/score/history", {"beatmap_id": 123, "mods": "HD,HR", "page": 2, "format": "png"})]
+        for text, path, expected in cases:
+            with self.subTest(text=text):
+                command = arguments.parse_command(text, ["200"])
+                request = service.build_request(command, identity.Identity("qq", "100"), "yaowan")
+                self.assertEqual((request.method, request.path, request.image), ("GET", path, True))
+                self.assertEqual(request.params["platform_uid"], "200")
+                self.assertEqual(request.params["game_mode"], 3)
+                for key, value in expected.items():
+                    self.assertEqual(request.params[key], value)
+                self.assertNotIn("legacy_only", request.params)
+
+    def test_extended_invalid_arguments(self):
+        for text in ["/nb 7", "/history 30", "/nb #0", "/nb #366", "/nb #7 #8", "/history #3651",
+                     "/nb #abc", "/history #7x", "/fix #7", "/analyze 3", "/score", "/scorehistory -1",
+                     "/score 123 --page 2", "/scorehistory 123 --page 0", "/scorehistory 123 --page",
+                     "/scorehistory 123 --mods NM,HD", "/scorehistory 123 --mods HD,", "/scorehistory 123 --page 2 --page 3",
+                     "/history:4", "/scorehistory 123 #7"]:
+            with self.subTest(text=text), self.assertRaises(ValueError):
+                arguments.parse_command(text, [])
+
     def test_mode_suffix_and_username_spaces(self):
         command = arguments.parse_command("/stat Player Name:3", [])
         self.assertEqual((command.name, command.username, command.mode), ("stat", "Player Name", 3))
@@ -148,6 +182,21 @@ class ParsingTests(unittest.TestCase):
 
 
 class HttpTests(unittest.IsolatedAsyncioTestCase):
+    async def test_all_extended_commands_send_images_for_mentioned_user(self):
+        plugin = main.MintOsuPlugin(SimpleNamespace(), {"theme": "yaowan"})
+        plugin._client = self.client
+        for text in ["/nb #7:3", "/fix:3", "/analyze:3", "/history #90:3", "/score 123:3", "/scorehistory 123 --mods NM --page 2:3"]:
+            with self.subTest(text=text):
+                event = event_for([Plain(text), At(qq="200")])
+                self.assertTrue(main.MintCommandFilter().filter(event, {}))
+                results = [result async for result in plugin.handle_command(event)]
+                self.assertIsInstance(results[0].chain[0], Image)
+                self.assertEqual(self.requests[-1][2]["platform_uid"], "200")
+                self.assertEqual(self.requests[-1][2]["game_mode"], "3")
+        self.assertEqual(self.requests[3][2]["format"], "png")
+        self.assertEqual(self.requests[5][2]["format"], "png")
+        self.assertEqual(self.requests[5][2]["mods"], "NM")
+
     async def asyncSetUp(self):
         self.requests = []
         self.status = 200

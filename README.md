@@ -25,6 +25,12 @@
 | `/pr [@用户]` | 最近一条成绩，不包含失败 |
 | `/recent [@用户]` | 最近一条成绩，包含失败 |
 | `/bp [@用户] [序号或区间]` | 默认 BP1；例如 `/bp 3`、`/bp @用户 1-10` |
+| `/nb [@用户] [#天数]` | 新增 BP，默认 1 天，例如 `/nb #7:3` |
+| `/fix [@用户]` | BP 补 FC 分析图 |
+| `/analyze [@用户]` | BP 成绩分析图 |
+| `/history [@用户] [#天数]` | PP/排名趋势，默认 30 天，例如 `/history #90:3` |
+| `/score [@用户] 谱面ID` | 指定谱面的个人成绩 |
+| `/scorehistory [@用户] 谱面ID [--mods HD,HR] [--page 2]` | 谱面成绩历史，默认每页 20 条 |
 | `/beatmap 谱面ID` | 谱面信息 |
 | `/bind 用户名` | 绑定自己；已绑定需先解绑 |
 | `/unbind` | 解除自己的绑定 |
@@ -32,6 +38,11 @@
 | `/minthelp` | 命令帮助 |
 
 资料卡、pr、recent、bp 的末尾可添加模式：`:0` osu!、`:1` taiko、`:2` catch、`:3` mania。
+nb、fix、analyze、history、score、scorehistory 同样支持末尾模式，不写 @用户 时查询自己。
+天数必须用 `#数字`，nb 为 1～365 天，history 为 1～3650 天，不接受裸数字天数。
+例如 `/nb @用户 #7:3`、`/scorehistory @用户 123456 --mods HD,HR --page 2:0`。
+history 和 scorehistory 显式请求 PNG，保留服务端历史来源与提示；fix、analyze、nb 使用默认分析主题。
+analyze 的临时模式需要更新包含 `performance_analyze?game_mode=` 支持的 MintAPI。
 例如 `/statme:3`、`/stat Player Name:1`、`/pr @用户:3`、`/bp 1-10:3`。
 省略模式时使用查询对象绑定的默认模式；`stat 用户名` 使用调用者默认模式，未绑定则使用 0。
 pr/recent 仅查询最近一条，不接受序号或区间；BP 序号为 1～100，区间最多 20 条。

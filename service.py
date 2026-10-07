@@ -19,6 +19,25 @@ def build_request(command: Command, caller: Identity, theme: str) -> Request:
     params = dict(identity)
     if command.mode is not None:
         params["game_mode"] = command.mode
+    if name == "nb":
+        params["days"] = command.days
+        return Request("GET", "/score/new_best_plays", params)
+    if name == "fix":
+        return Request("GET", "/score/fix", params)
+    if name == "analyze":
+        params["theme"] = "default"
+        return Request("GET", "/user_info/extra/performance_analyze", params)
+    if name == "history":
+        params.update(days=command.days, format="png")
+        return Request("GET", "/user_info/history", params)
+    if name == "score":
+        params.update(beatmap_id=command.beatmap_id, theme=theme)
+        return Request("GET", "/score/user_score", params)
+    if name == "scorehistory":
+        params.update(beatmap_id=command.beatmap_id, format="png", page=command.page)
+        if command.mods is not None:
+            params["mods"] = command.mods
+        return Request("GET", "/score/history", params)
     if name in {"stat", "statme"}:
         params["theme"] = theme
         if command.username:
@@ -55,7 +74,15 @@ def error_message(command: Command, status: int, detail: str, retry_after: str |
             return "找不到这个 osu! 玩家，请检查用户名。"
         if "User not found" in detail or "binding not found" in detail:
             return "对方尚未绑定 osu! 账号。" if command.target_uid else "你尚未绑定 osu! 账号，请使用 /bind 用户名。"
-        if command.name in {"pr", "recent", "bp"}:
+        if command.name == "nb":
+            return "指定天数内没有新增 BP。"
+        if command.name == "fix":
+            return "没有 BP 或没有符合条件的可修复成绩。"
+        if command.name == "history":
+            return "没有可用的 PP 或排名历史。"
+        if command.name == "scorehistory":
+            return "该谱面在当前筛选条件或页码下没有成绩记录。"
+        if command.name in {"pr", "recent", "bp", "score", "analyze"}:
             return "没有符合条件的成绩。"
         return "没有找到对应玩家或谱面。"
     if status == 400 and command.name == "bind":

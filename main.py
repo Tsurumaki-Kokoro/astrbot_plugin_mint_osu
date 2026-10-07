@@ -19,12 +19,18 @@ HELP = """Mint osu! 命令：
 /pr [@用户]：最近一条成绩，不含失败
 /recent [@用户]：最近一条成绩，包含失败
 /bp [@用户] [序号或区间]：BP，默认第 1 条
+/nb [@用户] [#天数]：新增 BP，默认 1 天
+/fix [@用户]：BP 补 FC 分析
+/analyze [@用户]：BP 成绩分析
+/history [@用户] [#天数]：PP/排名趋势，默认 30 天
+/score [@用户] 谱面ID：个人谱面成绩
+/scorehistory [@用户] 谱面ID [--mods HD,HR] [--page 2]：谱面成绩历史
 /beatmap 谱面ID：谱面信息
 /bind 用户名、/unbind：绑定与解绑
 /mode 0～3：默认模式
 资料卡和成绩命令末尾可加 :0～:3。
 0 osu! · 1 taiko · 2 catch · 3 mania
-例如 /statme:3、/bp 1-10:3"""
+例如 /statme:3、/bp 1-10:3、/nb #7:3"""
 
 
 def command_text(event: AstrMessageEvent) -> str:
@@ -109,7 +115,7 @@ class MintOsuPlugin(Star):
 
     @filter.custom_filter(MintCommandFilter)
     async def handle_command(self, event: AstrMessageEvent):
-        """Mint osu!：stat、statme、pr、recent、bp、beatmap、bind、unbind、mode、minthelp。"""
+        """Mint osu!：资料、成绩、BP 分析、历史、谱面与绑定命令；/minthelp 查看用法。"""
         command = None
         try:
             command = parse_command(command_text(event), mentioned_users(event))
