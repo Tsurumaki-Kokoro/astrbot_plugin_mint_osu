@@ -73,3 +73,29 @@ python -m unittest discover -s tests -v
 ## 参考
 
 - [AstrBot 插件开发文档](https://docs.astrbot.app/dev/star/plugin-new.html)
+
+## QQ 官方机器人私聊菜单
+
+`qq_menu.json` 定义帮助、资料、成绩、分析、谱面、账号六个入口，覆盖插件全部指令。按钮将指令填入输入框；用户名、谱面 ID 和模式参数由用户补全后发送。菜单仅用于 QQ 官方机器人 C2C 私聊，不适用于 OneBot 或群聊。
+
+在 AstrBot 所在机器运行以下命令更新线上菜单（无需重启插件）：
+
+```sh
+python3 tools/update_qq_menu.py --config /path/to/AstrBot/data/cmd_config.json
+```
+
+存在多个启用的 QQ 官方适配器时，使用 `--platform-id` 指定目标。工具从 AstrBot 配置读取凭证，不在输出或菜单文件保存凭证；先读取并备份现有菜单到 AstrBot 的 `data/temp/qq-menu-backup-*.json`，再提交完整菜单并读取核验。QQ 返回的默认图标等附加字段不影响核验。更新会覆盖该机器人的全局菜单，影响所有私聊用户；接口限制为每分钟 5 次，不自动重试写操作。
+
+协议参考：[修改全局自定义菜单](https://bot.q.qq.com/wiki/develop/api-v2/autogen/api/v2_menu.put.html)。
+
+## QQ 官方机器人指令面板
+
+`qq_panel.json` 包含现有 16 条插件指令。面板的 `name` 就是点击后填入输入框的指令，`desc` 展示参数提示；无需参数的指令可直接发送，其他指令需补全用户名、谱面 ID 或模式。
+
+```sh
+python3 tools/update_qq_panels.py --config /path/to/AstrBot/data/cmd_config.json
+```
+
+工具分别更新私聊（c2c）和群聊（group）的全局面板，不存在时创建。更新前备份到 `data/temp/qq-panels-backup-*.json`，更新后读取核验；已有的指定用户或指定群面板保留关联关系。多个全局面板无法确定目标时停止写入。与私聊底部菜单独立配置，无需重启 AstrBot。
+
+协议参考：[创建指令面板](https://bot.q.qq.com/wiki/develop/api-v2/autogen/api/v2_panels.post.html)。

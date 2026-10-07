@@ -1,0 +1,121 @@
+{
+  "menu": {
+    "items": [
+      {
+        "type": "send_message",
+        "name": "帮助",
+        "send_message": "/minthelp"
+      },
+      {
+        "type": "menu",
+        "name": "资料",
+        "sub_menu_items": [
+          {
+            "type": "send_message",
+            "name": "我的资料",
+            "send_message": "/statme"
+          },
+          {
+            "type": "send_message",
+            "name": "查询玩家",
+            "send_message": "/stat "
+          },
+          {
+            "type": "send_message",
+            "name": "排名趋势",
+            "send_message": "/history"
+          }
+        ]
+      },
+      {
+        "type": "menu",
+        "name": "成绩",
+        "sub_menu_items": [
+          {
+            "type": "send_message",
+            "name": "最近成绩",
+            "send_message": "/pr"
+          },
+          {
+            "type": "send_message",
+            "name": "含失败成绩",
+            "send_message": "/recent"
+          },
+          {
+            "type": "send_message",
+            "name": "最佳成绩",
+            "send_message": "/bp"
+          },
+          {
+            "type": "send_message",
+            "name": "前十BP",
+            "send_message": "/bp 1-10"
+          },
+          {
+            "type": "send_message",
+            "name": "新增BP",
+            "send_message": "/nb"
+          }
+        ]
+      },
+      {
+        "type": "menu",
+        "name": "分析",
+        "sub_menu_items": [
+          {
+            "type": "send_message",
+            "name": "补FC分析",
+            "send_message": "/fix"
+          },
+          {
+            "type": "send_message",
+            "name": "BP分析",
+            "send_message": "/analyze"
+          }
+        ]
+      },
+      {
+        "type": "menu",
+        "name": "谱面",
+        "sub_menu_items": [
+          {
+            "type": "send_message",
+            "name": "谱面信息",
+            "send_message": "/beatmap "
+          },
+          {
+            "type": "send_message",
+            "name": "个人成绩",
+            "send_message": "/score "
+          },
+          {
+            "type": "send_message",
+            "name": "成绩历史",
+            "send_message": "/scorehistory "
+          }
+        ]
+      },
+      {
+        "type": "menu",
+        "name": "账号",
+        "sub_menu_items": [
+          {
+            "type": "send_message",
+            "name": "绑定账号",
+            "send_message": "/bind "
+          },
+          {
+            "type": "send_message",
+            "name": "默认模式",
+            "send_message": "/mode "
+          },
+          {
+            "type": "send_message",
+            "name": "解除绑定",
+            "send_message": "/unbind"
+          }
+        ]
+      }
+    ]
+  }
+}

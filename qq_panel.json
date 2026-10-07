@@ -1,0 +1,101 @@
+{
+  "items": [
+    {
+      "type": "command",
+      "name": "/minthelp",
+      "desc": "查看全部命令用法",
+      "only_admin": false
+    },
+    {
+      "type": "command",
+      "name": "/statme",
+      "desc": "查询自己的资料卡",
+      "only_admin": false
+    },
+    {
+      "type": "command",
+      "name": "/stat",
+      "desc": "输入用户名查询资料",
+      "only_admin": false
+    },
+    {
+      "type": "command",
+      "name": "/pr",
+      "desc": "最近成绩，不含失败",
+      "only_admin": false
+    },
+    {
+      "type": "command",
+      "name": "/recent",
+      "desc": "最近成绩，包含失败",
+      "only_admin": false
+    },
+    {
+      "type": "command",
+      "name": "/bp",
+      "desc": "最佳成绩，可填序号或区间",
+      "only_admin": false
+    },
+    {
+      "type": "command",
+      "name": "/nb",
+      "desc": "新增BP，可加 #天数",
+      "only_admin": false
+    },
+    {
+      "type": "command",
+      "name": "/fix",
+      "desc": "BP补FC分析",
+      "only_admin": false
+    },
+    {
+      "type": "command",
+      "name": "/analyze",
+      "desc": "BP成绩分析",
+      "only_admin": false
+    },
+    {
+      "type": "command",
+      "name": "/history",
+      "desc": "排名趋势，可加 #天数",
+      "only_admin": false
+    },
+    {
+      "type": "command",
+      "name": "/score",
+      "desc": "输入谱面ID查询个人成绩",
+      "only_admin": false
+    },
+    {
+      "type": "command",
+      "name": "/scorehistory",
+      "desc": "输入谱面ID查询成绩历史",
+      "only_admin": false
+    },
+    {
+      "type": "command",
+      "name": "/beatmap",
+      "desc": "输入谱面ID查询谱面",
+      "only_admin": false
+    },
+    {
+      "type": "command",
+      "name": "/bind",
+      "desc": "输入osu!用户名绑定",
+      "only_admin": false
+    },
+    {
+      "type": "command",
+      "name": "/mode",
+      "desc": "输入0～3设置默认模式",
+      "only_admin": false
+    },
+    {
+      "type": "command",
+      "name": "/unbind",
+      "desc": "解除自己的账号绑定",
+      "only_admin": false
+    }
+  ],
+  "remark": "Mint osu! commands"
+}
