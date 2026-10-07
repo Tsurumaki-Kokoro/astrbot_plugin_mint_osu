@@ -1,0 +1,33 @@
+{
+  "api_base_url": {
+    "description": "MintAPI 地址",
+    "type": "string",
+    "default": "http://127.0.0.1:5251",
+    "hint": "填写 AstrBot 所在环境可访问的地址；容器内的 localhost 指向容器自身。"
+  },
+  "api_token": {
+    "description": "MintAPI 接口密钥",
+    "type": "string",
+    "secret": true,
+    "default": "",
+    "hint": "与 MintAPI 的 ApiKey 一致，通过 access_token 请求头发送。"
+  },
+  "theme": {
+    "description": "资料卡与单条成绩主题",
+    "type": "string",
+    "default": "default",
+    "options": ["default", "yaowan"]
+  },
+  "request_timeout": {
+    "description": "请求超时（秒）",
+    "type": "int",
+    "default": 90,
+    "hint": "1～300 秒，图片渲染可能需要较长时间。"
+  },
+  "max_concurrency": {
+    "description": "同时请求数量",
+    "type": "int",
+    "default": 2,
+    "hint": "1～10；用于限制同时发起的图片渲染请求。"
+  }
+}
