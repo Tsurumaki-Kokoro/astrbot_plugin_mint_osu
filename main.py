@@ -5,15 +5,20 @@ import re
 import aiohttp
 from astrbot.api import AstrBotConfig, logger
 from astrbot.api.event import AstrMessageEvent, filter
-from astrbot.api.message_components import At, AtAll, Plain, Image
+from astrbot.api.message_components import At, AtAll, Plain, Image, Video
 from astrbot.api.star import Context, Star, register
 
 from .arguments import COMMAND_PATTERN, parse_command
 from .identity import resolve_identity
 from .mint_client import MintAPIError, MintClient
 from .service import build_request, error_message
+from .extras import avatar_archive, group_ranking, save_attachment
 
 HELP = """Mint osu! 命令：
+/oa：自己的名片；/oa @用户：单人名片；/oa 用户名列表：ZIP，空格用户名加引号
+/pp 增加PP [@用户]：增加 PP 所需成绩与 BP 位置
+/previewvideo 谱面ID [--mods HD,DT] [--start preview] [--duration 30]：视频
+/rank:3、/top5：当前群已绑定成员的排行榜
 /stat 用户名 或 /stat @用户：资料卡
 /statme：自己的资料卡
 /pr [@用户]：最近一条成绩，不含失败
@@ -136,7 +141,25 @@ class MintOsuPlugin(Star):
                 raise ValueError("资料卡与成绩主题只能选择 default 或 yaowan。")
             if self._client is None:
                 self._client = self._create_client()
-            result = await self._client.request(build_request(command, caller, theme))
+            if command.name == "oa" and command.usernames:
+                attachment = await avatar_archive(self._client, command, event)
+                yield event.chain_result([attachment])
+                return
+            if command.name in {"rank", "top5"}:
+                result = await group_ranking(self._client, command, caller, event)
+            else:
+                result = await self._client.request(build_request(command, caller, theme))
+            if command.name == "previewvideo":
+                path = save_attachment(event, result, ".mp4")
+                yield event.chain_result([Video.fromFileSystem(path)])
+                return
+            if command.name == "pp":
+                required, position = result.get("required_pp"), result.get("position")
+                import math
+                if not isinstance(required, (int, float)) or not math.isfinite(required) or not isinstance(position, int):
+                    raise ValueError("增加 PP 计算返回无效数据。")
+                yield event.plain_result(f"增加 {command.pp:g} PP：需要约 {required:.2f} PP 的新成绩，预计位于 BP #{position}。")
+                return
             if isinstance(result, bytes):
                 chain = [Image.fromBytes(result)]
                 if command.name in {"mp", "rating"}:

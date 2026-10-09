@@ -73,7 +73,7 @@ python -m unittest discover -s tests -v
 ```
 
 测试覆盖解析、身份、HTTP 契约和实际 AstrBot 消息组件。真实平台验证仍需启动 MintAPI，并在 QQ 私聊、群聊发送命令。
-视频、群排行榜与实时比赛订阅尚未接入。
+实时比赛订阅尚未接入。
 
 ### 搜索与预览
 
@@ -104,7 +104,7 @@ python3 tools/update_qq_menu.py --config /path/to/AstrBot/data/cmd_config.json
 
 ## QQ 官方机器人指令面板
 
-`qq_panel.json` 包含 16 条常用指令；QQ 面板上限为 20 条，完整命令见 /minthelp。面板的 `name` 就是点击后填入输入框的指令，`desc` 展示参数提示；无需参数的指令可直接发送，其他指令需补全用户名、谱面 ID 或模式。
+`qq_panel.json` 包含 20 条常用指令；QQ 面板上限为 20 条，完整命令见 /minthelp。面板的 `name` 就是点击后填入输入框的指令，`desc` 展示参数提示；无需参数的指令可直接发送，其他指令需补全用户名、谱面 ID 或模式。
 
 ```sh
 python3 tools/update_qq_panels.py --config /path/to/AstrBot/data/cmd_config.json
@@ -124,3 +124,14 @@ python3 tools/update_qq_panels.py --config /path/to/AstrBot/data/cmd_config.json
 - 不接受 @用户 或模式后缀，模式由比赛决定。评分页码从 1 开始，图片回复附带页数。
 
 这些用法接入现有 `/multiplayer/history` 和 `/multiplayer/rating`；指定算法属于 rating 的参数，并非第三条独立命令。实时订阅尚未接入。
+
+## 名片、增加 PP、群排名与视频
+
+- `/oa` 返回自己的名片；`/oa @用户` 仅允许一位提及对象，直接返回图片。
+- `/oa peppy "Player One"` 按用户名逐个生成名片并发送 ZIP，无需绑定。每批最多 20 个用户名；部分失败会在 ZIP 中附上失败清单，全部失败直接提示。单个显式用户名也按列表形式发送 ZIP。
+- `/pp 增加PP [@用户]` 使用目标用户的绑定模式，返回所需单曲 PP 和预计 BP 位置。
+- `/rank:3` 和 `/top5` 自动获取当前群成员，分批调用 `/users/bindings` 筛出已绑定名单。rank 默认 osu! 模式 0；top5 展示四模式各前五。
+- 平台不能提供完整群成员名单时提示不支持；QQ OneBot 可提供该名单，QQ 官方机器人以其适配器能力为准。当前已绑定名单超过 100 人会明确提示接口上限，不截断、不生成不完整榜单。
+- `/previewvideo 谱面ID --mods HD,DT --start preview --duration 30` 返回 MP4，时长大于 0 且最多 60 秒，起点可以是 preview 或非负秒数。视频响应上限 80 MiB。
+- ZIP 和视频使用临时文件，发送完成后交由 AstrBot 的事件临时文件机制清理；实际平台是否支持文件/视频消息需要实际验证。
+- 使用群排行榜前需要更新包含 `POST /users/bindings` 的 MintAPI。背景上传、实时比赛订阅本轮不接入。

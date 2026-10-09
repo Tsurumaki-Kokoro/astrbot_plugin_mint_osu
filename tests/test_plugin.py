@@ -300,6 +300,24 @@ class HttpTests(unittest.IsolatedAsyncioTestCase):
         await self.client.close()
         await self.server.close()
 
+    async def test_video_binary_and_actual_attachment_component(self):
+        self.reply, self.content_type = b"\x00\x00\x00\x18ftypisomfixture", "video/mp4"
+        plugin = main.MintOsuPlugin(None, {"base_url": str(self.server.make_url('/')).rstrip('/'), "access_token": "token"})
+        plugin._client = self.client
+        results = [r async for r in plugin.handle_command(event_for([Plain('/previewvideo 123 --mods HD,DT')]))]
+        component = results[0].chain[0]
+        self.assertIsInstance(component, main.Video)
+        path = component.file.removeprefix('file://')
+        try:
+            self.assertEqual(Path(path).read_bytes(), self.reply)
+        finally:
+            os.unlink(path)
+        self.assertEqual(self.requests[-1][1], '/beatmap/preview/video')
+        self.assertEqual(self.multi_params[-1], ['HD', 'DT'])
+        self.reply = b'not a video'
+        with self.assertRaises(client_module.MintAPIError):
+            await self.client.request(service.build_request(arguments.parse_command('/previewvideo 123', []), identity.resolve_identity('aiocqhttp', 'adapter-1', '100'), 'default'))
+
     async def test_auth_query_and_binary_image(self):
         command = arguments.parse_command("/pr:3", [])
         result = await self.client.request(service.build_request(command, identity.Identity("qq", "100"), "default"))

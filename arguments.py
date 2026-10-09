@@ -1,10 +1,11 @@
 """Parse Mint commands independently of AstrBot and preserve usernames with spaces."""
 import re
+import math
 import shlex
 from urllib.parse import urlsplit
 from dataclasses import dataclass
 
-COMMAND_PATTERN = re.compile(r"^/?(statme|stat|pr|recent|bp|beatmapset|beatmap|bind|unbind|mode|minthelp|nb|fix|analyze|history|scorehistory|score|search|preview|bpm|cover|mp|rating)(?=\s|:|#|$)", re.I)
+COMMAND_PATTERN = re.compile(r"^/?(statme|stat|pr|recent|bp|beatmapset|beatmap|bind|unbind|mode|minthelp|nb|fix|analyze|history|scorehistory|score|search|preview|bpm|cover|mp|rating|oa|pp|previewvideo|rank|top5)(?=\s|:|#|$)", re.I)
 MODE_NAMES = {"osu": 0, "std": 0, "standard": 0, "taiko": 1, "catch": 2, "ctb": 2, "fruits": 2, "mania": 3}
 
 
@@ -26,6 +27,10 @@ class Command:
     match_id: int | None = None
     algorithm: str = "osuplus"
     team_type: str | None = None
+    usernames: tuple[str, ...] = ()
+    pp: float | None = None
+    start: str = "preview"
+    duration: float = 30
 
 
 def parse_command(text: str, mentions: list[str]) -> Command:
@@ -38,8 +43,27 @@ def parse_command(text: str, mentions: list[str]) -> Command:
     if len(set(mentions)) > 1:
         raise ValueError("一次只能查询一位 @用户。")
     target = mentions[0] if mentions else None
-    if target and name not in {"stat", "pr", "recent", "bp", "nb", "fix", "analyze", "history", "score", "scorehistory"}:
+    if target and name not in {"stat", "pr", "recent", "bp", "nb", "fix", "analyze", "history", "score", "scorehistory", "oa", "pp"}:
         raise ValueError("这个命令不支持 @用户。")
+    if name == "oa":
+        names = shlex.split(tail)
+        if target and names:
+            raise ValueError("oa 不能混用 @用户 和用户名列表。")
+        if len(names) > 20 or any(not item.strip() or len(item) > 100 for item in names):
+            raise ValueError("oa 每次最多 20 个用户名；含空格的用户名使用引号。")
+        return Command(name, target_uid=target, usernames=tuple(dict.fromkeys(names)))
+    if name == "pp":
+        try:
+            value = float(tail)
+        except ValueError:
+            raise ValueError("请使用 /pp 增加PP值 [@用户]。")
+        if not math.isfinite(value) or value <= 0:
+            raise ValueError("增加 PP 必须是有限的正数。")
+        return Command(name, target_uid=target, pp=value)
+    if name == "top5":
+        if tail:
+            raise ValueError("top5 自动查询当前群的已绑定成员，不接受用户列表或模式。")
+        return Command(name)
     if name in {"mp", "rating"}:
         tokens = shlex.split(tail)
         if not tokens:
@@ -79,7 +103,7 @@ def parse_command(text: str, mentions: list[str]) -> Command:
         return Command(name, match_id=match_id, page=page, algorithm=algorithm, team_type=team_type)
 
     mode = None
-    if name in {"stat", "statme", "pr", "recent", "bp", "nb", "fix", "analyze", "history", "score", "scorehistory", "search"}:
+    if name in {"stat", "statme", "pr", "recent", "bp", "nb", "fix", "analyze", "history", "score", "scorehistory", "search", "rank"}:
         suffix = re.search(r":\s*([+-]?\d+)\s*$", tail)
         if suffix:
             mode = int(suffix[1])
@@ -88,6 +112,10 @@ def parse_command(text: str, mentions: list[str]) -> Command:
             tail = tail[:suffix.start()].strip()
         elif ":" in tail and name != "search":
             raise ValueError("模式请放在末尾，使用 :0～:3。")
+    if name == "rank":
+        if tail:
+            raise ValueError("请使用 /rank 或 /rank:0～:3。")
+        return Command(name, mode=mode if mode is not None else 0)
     if name == "search":
         shlex.split(tail)  # Reject unmatched quotes, preserve official query syntax below.
         tokens = re.findall(r"""(?:[^\s"']+|"[^"]*"|'[^']*')+""", tail)
@@ -115,19 +143,34 @@ def parse_command(text: str, mentions: list[str]) -> Command:
         if not 1 <= len(query) <= 500:
             raise ValueError("请使用 /search 关键词，关键词长度为 1～500 字符。")
         return Command(name, mode, query=query, page=page, cursor=cursor)
-    if name == "preview":
+    if name in {"preview", "previewvideo"}:
         tokens = shlex.split(tail)
         if not tokens or not re.fullmatch(r"[0-9]+", tokens[0]) or not 0 < int(tokens[0]) <= 2147483647:
             raise ValueError("请使用 /preview 谱面ID [--mods HD,DT] [--format gif或png]。")
         map_id = int(tokens.pop(0))
-        mods, format, seen = None, "gif", set()
+        mods, format, seen, start, duration = None, "gif", set(), "preview", 30.0
         while tokens:
             flag = tokens.pop(0)
-            if flag not in {"--mods", "--format"} or flag in seen or not tokens:
+            allowed = {"--mods", "--start", "--duration"} if name == "previewvideo" else {"--mods", "--format"}
+            if flag not in allowed or flag in seen or not tokens:
                 raise ValueError("预览支持 --mods HD,DT 和 --format gif或png。")
             seen.add(flag)
             value = tokens.pop(0).upper()
-            if flag == "--format":
+            if flag in {"--start", "--duration"}:
+                if flag == "--start" and value == "PREVIEW":
+                    start = "preview"
+                    continue
+                try:
+                    number = float(value)
+                except ValueError:
+                    raise ValueError("视频起点为 preview 或非负秒数，时长为 0～60 秒。")
+                if not math.isfinite(number) or (flag == "--start" and number < 0) or (flag == "--duration" and not 0 < number <= 60):
+                    raise ValueError("视频起点必须非负，时长必须大于 0 且不超过 60 秒。")
+                if flag == "--start":
+                    start = str(number)
+                else:
+                    duration = number
+            elif flag == "--format":
                 if value not in {"GIF", "PNG"}:
                     raise ValueError("预览格式必须为 gif 或 png。")
                 format = value.lower()
@@ -136,7 +179,7 @@ def parse_command(text: str, mentions: list[str]) -> Command:
                 if any(not re.fullmatch(r"[A-Z0-9]{2,4}", item) for item in items) or ("NM" in items and len(items) != 1):
                     raise ValueError("Mods 使用逗号分隔的缩写；NM 必须单独使用。")
                 mods = ','.join(dict.fromkeys(items))
-        return Command(name, beatmap_id=map_id, mods=mods, format=format)
+        return Command(name, beatmap_id=map_id, mods=mods, format=format, start=start, duration=duration)
     if name in {"nb", "history"}:
         days = 1 if name == "nb" else 30
         if tail:

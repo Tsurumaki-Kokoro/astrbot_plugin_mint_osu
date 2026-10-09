@@ -13,10 +13,20 @@ class Request:
     body: dict | None = None
     image: bool = True
     image_types: tuple[str, ...] = ("png",)
+    video: bool = False
 
 
 def build_request(command: Command, caller: Identity, theme: str) -> Request:
     name = command.name
+    if name == "oa":
+        return Request("GET", "/user_info/avatar_card", {"platform": caller.platform, "platform_uid": command.target_uid or caller.uid})
+    if name == "pp":
+        return Request("GET", "/user_info/extra/performance_control", {"platform": caller.platform, "platform_uid": command.target_uid or caller.uid, "pp": command.pp}, image=False)
+    if name == "previewvideo":
+        params = {"beatmap_id": command.beatmap_id, "start": command.start, "duration": command.duration}
+        if command.mods and command.mods != "NM":
+            params["mods"] = command.mods.split(',')
+        return Request("GET", "/beatmap/preview/video", params, image=False, video=True)
     if name in {"mp", "rating"}:
         params = {"mp_id": command.match_id, "page": command.page, "theme": "default"}
         if command.team_type is not None:

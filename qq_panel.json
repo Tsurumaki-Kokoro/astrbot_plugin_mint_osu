@@ -92,8 +92,32 @@
     },
     {
       "type": "command",
-      "name": "/unbind",
-      "desc": "解除自己的账号绑定",
+      "name": "/oa",
+      "desc": "自己或单个@名片，用户名列表ZIP",
+      "only_admin": false
+    },
+    {
+      "type": "command",
+      "name": "/pp",
+      "desc": "输入希望增加的PP",
+      "only_admin": false
+    },
+    {
+      "type": "command",
+      "name": "/rank",
+      "desc": "当前群已绑定用户排名",
+      "only_admin": false
+    },
+    {
+      "type": "command",
+      "name": "/top5",
+      "desc": "当前群四模式前五",
+      "only_admin": false
+    },
+    {
+      "type": "command",
+      "name": "/previewvideo",
+      "desc": "输入谱面ID生成视频",
       "only_admin": false
     }
   ],

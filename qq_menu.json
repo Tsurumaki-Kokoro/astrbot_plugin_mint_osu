@@ -24,6 +24,16 @@
             "type": "send_message",
             "name": "排名趋势",
             "send_message": "/history"
+          },
+          {
+            "type": "send_message",
+            "name": "名片",
+            "send_message": "/oa"
+          },
+          {
+            "type": "send_message",
+            "name": "增加PP",
+            "send_message": "/pp "
           }
         ]
       },
@@ -71,6 +81,16 @@
             "type": "send_message",
             "name": "BP分析",
             "send_message": "/analyze"
+          },
+          {
+            "type": "send_message",
+            "name": "群排名",
+            "send_message": "/rank"
+          },
+          {
+            "type": "send_message",
+            "name": "群前五",
+            "send_message": "/top5"
           }
         ]
       },
@@ -92,6 +112,11 @@
             "type": "send_message",
             "name": "成绩历史",
             "send_message": "/scorehistory "
+          },
+          {
+            "type": "send_message",
+            "name": "视频预览",
+            "send_message": "/previewvideo "
           }
         ]
       },
