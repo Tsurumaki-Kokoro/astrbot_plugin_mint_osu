@@ -17,11 +17,6 @@
           },
           {
             "type": "send_message",
-            "name": "查询玩家",
-            "send_message": "/stat "
-          },
-          {
-            "type": "send_message",
             "name": "排名趋势",
             "send_message": "/history"
           },
@@ -29,11 +24,6 @@
             "type": "send_message",
             "name": "名片",
             "send_message": "/oa"
-          },
-          {
-            "type": "send_message",
-            "name": "增加PP",
-            "send_message": "/pp "
           }
         ]
       },
@@ -81,47 +71,6 @@
             "type": "send_message",
             "name": "BP分析",
             "send_message": "/analyze"
-          },
-          {
-            "type": "send_message",
-            "name": "群排名",
-            "send_message": "/rank"
-          },
-          {
-            "type": "send_message",
-            "name": "群前五",
-            "send_message": "/top5"
-          },
-          {
-            "type": "send_message",
-            "name": "比赛订阅",
-            "send_message": "/mpwatch "
-          }
-        ]
-      },
-      {
-        "type": "menu",
-        "name": "谱面",
-        "sub_menu_items": [
-          {
-            "type": "send_message",
-            "name": "谱面信息",
-            "send_message": "/beatmap "
-          },
-          {
-            "type": "send_message",
-            "name": "个人成绩",
-            "send_message": "/score "
-          },
-          {
-            "type": "send_message",
-            "name": "成绩历史",
-            "send_message": "/scorehistory "
-          },
-          {
-            "type": "send_message",
-            "name": "视频预览",
-            "send_message": "/previewvideo "
           }
         ]
       },
@@ -129,16 +78,6 @@
         "type": "menu",
         "name": "账号",
         "sub_menu_items": [
-          {
-            "type": "send_message",
-            "name": "绑定账号",
-            "send_message": "/bind "
-          },
-          {
-            "type": "send_message",
-            "name": "默认模式",
-            "send_message": "/mode "
-          },
           {
             "type": "send_message",
             "name": "解除绑定",

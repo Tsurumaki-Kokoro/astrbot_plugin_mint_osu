@@ -72,9 +72,9 @@ class NewCommandTests(unittest.TestCase):
         request = service.build_request(arguments.parse_command('/pp 100', ['200']), caller, 'default')
         self.assertEqual(request.params['pp'], 100)
         self.assertFalse(request.image)
-        request = service.build_request(arguments.parse_command('/previewvideo 123 --mods HD,DT --start 12 --duration 20', []), caller, 'default')
+        request = service.build_request(arguments.parse_command('/previewv 123 -m HD,DT -s 12 -d 20', []), caller, 'default')
         self.assertTrue(request.video)
         self.assertEqual(request.params['duration'], 20)
         self.assertEqual(arguments.parse_command('/rank', []).mode, 0)
-        for text in ['/pp nan','/pp 0','/previewvideo 123 --duration 61','/rank peppy','/top5:3']:
+        for text in ['/pp nan','/pp 0','/previewv 123 -d 61','/rank peppy','/top5:3']:
             with self.assertRaises(ValueError): arguments.parse_command(text, [])

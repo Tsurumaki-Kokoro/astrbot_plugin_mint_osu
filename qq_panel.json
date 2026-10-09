@@ -110,7 +110,7 @@
     },
     {
       "type": "command",
-      "name": "/previewvideo",
+      "name": "/previewv",
       "desc": "输入谱面ID生成视频",
       "only_admin": false
     },

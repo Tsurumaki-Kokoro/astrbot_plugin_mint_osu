@@ -17,6 +17,8 @@
 
 ## 命令
 
+附加参数统一使用单字母短参数：`-p` 页码、`-c` 游标、`-m` Mods、`-f` 格式、`-s` 起点、`-d` 时长、`-a` 评分算法、`-t` 队伍类型。视频预览使用 `/previewv`。
+
 | 命令 | 说明 |
 | --- | --- |
 | `/stat 用户名` | 指定 osu! 玩家资料卡，用户名支持空格，无需调用者绑定 |
@@ -30,10 +32,10 @@
 | `/analyze [@用户]` | BP 成绩分析图 |
 | `/history [@用户] [#天数]` | PP/排名趋势，默认 30 天，例如 `/history #90:3` |
 | `/score [@用户] 谱面ID` | 指定谱面的个人成绩 |
-| `/scorehistory [@用户] 谱面ID [--mods HD,HR] [--page 2]` | 谱面成绩历史，默认每页 20 条 |
+| `/scorehistory [@用户] 谱面ID [-m HD,HR] [-p 2]` | 谱面成绩历史，默认每页 20 条 |
 | `/beatmap 谱面ID` | 谱面信息 |
-| `/search 关键词 [--page 2] [--cursor 游标]` | 谱面搜索图片，末尾 `:0～:3` 筛选模式，省略为全部模式 |
-| `/preview 谱面ID [--mods HD,DT] [--format png]` | 默认自动选取片段的 GIF；可选择 PNG |
+| `/search 关键词 [-p 2] [-c 游标]` | 谱面搜索图片，末尾 `:0～:3` 筛选模式，省略为全部模式 |
+| `/preview 谱面ID [-m HD,DT] [-f png]` | 默认自动选取片段的 GIF；可选择 PNG |
 | `/bpm 谱面ID` | BPM 时间轴 |
 | `/cover 谱面ID` | 谱面封面 |
 | `/beatmapset 谱面集ID` | 谱面集信息 |
@@ -45,7 +47,7 @@
 资料卡、pr、recent、bp 的末尾可添加模式：`:0` osu!、`:1` taiko、`:2` catch、`:3` mania。
 nb、fix、analyze、history、score、scorehistory 同样支持末尾模式，不写 @用户 时查询自己。
 天数必须用 `#数字`，nb 为 1～365 天，history 为 1～3650 天，不接受裸数字天数。
-例如 `/nb @用户 #7:3`、`/scorehistory @用户 123456 --mods HD,HR --page 2:0`。
+例如 `/nb @用户 #7:3`、`/scorehistory @用户 123456 -m HD,HR -p 2:0`。
 history 和 scorehistory 显式请求 PNG，保留服务端历史来源与提示；fix、analyze、nb 使用默认分析主题。
 analyze 的临时模式需要更新包含 `performance_analyze?game_mode=` 支持的 MintAPI。
 例如 `/statme:3`、`/stat Player Name:1`、`/pr @用户:3`、`/bp 1-10:3`。
@@ -77,9 +79,9 @@ python -m unittest discover -s tests -v
 
 ### 搜索与预览
 
-例如 `/search Blue Zenith --page 2:0`、`/preview 123456 --mods HD,DT --format png`。
-搜索每张图片最多显示 5 个谱面集。`--page` 为当前官方批次内的图片页，不是官方搜索游标。
-回复附带本批页数、总数和下一批游标；读取下一批时保持关键词与模式，使用 `--page 1 --cursor 游标`。
+例如 `/search Blue Zenith -p 2:0`、`/preview 123456 -m HD,DT -f png`。
+搜索每张图片最多显示 5 个谱面集。`-p` 为当前官方批次内的图片页，不是官方搜索游标。
+回复附带本批页数、总数和下一批游标；读取下一批时保持关键词与模式，使用 `-p 1 -c 游标`。
 搜索表达式支持空格及 `artist:...` 等官方语法，末尾 `:0～:3` 保留为插件模式后缀。
 这些指令无需绑定账号，谱面 ID 与谱面集 ID 分别用于 `/beatmap` 和 `/beatmapset`。
 GIF 生成可能较慢，可在配置中增加请求超时。平台能否显示动图取决于其图片消息支持。
@@ -90,7 +92,7 @@ GIF 生成可能较慢，可在配置中增加请求超时。平台能否显示�
 
 ## QQ 官方机器人私聊菜单
 
-`qq_menu.json` 定义帮助、资料、成绩、分析、谱面、账号六个入口，覆盖插件常用指令。按钮将指令填入输入框；用户名、谱面 ID 和模式参数由用户补全后发送。菜单仅用于 QQ 官方机器人 C2C 私聊，不适用于 OneBot 或群聊。
+`qq_menu.json` 定义帮助、资料、成绩、分析、账号五个入口，只保留点击后参数完整且可用于私聊的命令。移除必须手动填写用户名、谱面 ID、PP、模式或比赛 ID 的入口，也移除群排名入口。前十 BP 按钮自带 `1-10`，可直接使用。账号绑定和其他参数命令通过 `/minthelp` 查看后手动输入。菜单仅用于 QQ 官方机器人 C2C 私聊，不适用于 OneBot 或群聊。
 
 在 AstrBot 所在机器运行以下命令更新线上菜单（无需重启插件）：
 
@@ -104,6 +106,8 @@ python3 tools/update_qq_menu.py --config /path/to/AstrBot/data/cmd_config.json
 
 ## QQ 官方机器人指令面板
 
+由于面板上限，未展示的 9 条命令为 `/stat`、`/unbind`、`/beatmapset`、`/search`、`/preview`、`/bpm`、`/cover`、`/mp`、`/rating`，均可手动输入或通过 `/minthelp` 查看。测试核对全部 29 条命令必须属于面板已展示或明确列出的未展示名单。
+
 `qq_panel.json` 包含 20 条常用指令；QQ 面板上限为 20 条，完整命令见 /minthelp。面板的 `name` 就是点击后填入输入框的指令，`desc` 展示参数提示；无需参数的指令可直接发送，其他指令需补全用户名、谱面 ID 或模式。
 
 ```sh
@@ -116,11 +120,11 @@ python3 tools/update_qq_panels.py --config /path/to/AstrBot/data/cmd_config.json
 
 ## 比赛查询
 
-- `/mp 比赛ID`：比赛历史图，默认第 1 页；`--page 2` 翻页，`--page 0` 返回全部已结束对局。
-- `/rating 比赛ID`：玩家评分图，默认 osuplus 算法；`--algorithm bathbot` 或 `--algorithm flashlight` 切换算法。
+- `/mp 比赛ID`：比赛历史图，默认第 1 页；`-p 2` 翻页，`-p 0` 返回全部已结束对局。
+- `/rating 比赛ID`：玩家评分图，默认 osuplus 算法；`-a bathbot` 或 `-a flashlight` 切换算法。
 - 两者均接受 `https://osu.ppy.sh/community/matches/123456` 或旧版 `https://osu.ppy.sh/mp/123456` 链接，无需绑定。
-- 两者均支持 `--team-type head-to-head`、`--team-type team-vs`；mp 还支持 tag-coop、tag-team-vs，rating 不支持 Tag 评分。
-- 混合比赛需指定队伍类型；翻页时保留 ID、算法和队伍类型，例如 `/rating 123456 --algorithm bathbot --team-type team-vs --page 2`。
+- 两者均支持 `-t head-to-head`、`-t team-vs`；mp 还支持 tag-coop、tag-team-vs，rating 不支持 Tag 评分。
+- 混合比赛需指定队伍类型；翻页时保留 ID、算法和队伍类型，例如 `/rating 123456 -a bathbot -t team-vs -p 2`。
 - 不接受 @用户 或模式后缀，模式由比赛决定。评分页码从 1 开始，图片回复附带页数。
 
 这些用法接入现有 `/multiplayer/history` 和 `/multiplayer/rating`；指定算法属于 rating 的参数，并非第三条独立命令。实时订阅使用 `/mpwatch`。
@@ -132,7 +136,7 @@ python3 tools/update_qq_panels.py --config /path/to/AstrBot/data/cmd_config.json
 - `/pp 增加PP [@用户]` 使用目标用户的绑定模式，返回所需单曲 PP 和预计 BP 位置。
 - `/rank:3` 和 `/top5` 自动获取当前群成员，分批调用 `/users/bindings` 筛出已绑定名单。rank 默认 osu! 模式 0；top5 展示四模式各前五。
 - 平台不能提供完整群成员名单时提示不支持；QQ OneBot 可提供该名单，QQ 官方机器人以其适配器能力为准。当前已绑定名单超过 100 人会明确提示接口上限，不截断、不生成不完整榜单。
-- `/previewvideo 谱面ID --mods HD,DT --start preview --duration 30` 返回 MP4，时长大于 0 且最多 60 秒，起点可以是 preview 或非负秒数。视频响应上限 80 MiB。
+- `/previewv 谱面ID -m HD,DT -s preview -d 30` 返回 MP4，时长大于 0 且最多 60 秒，起点可以是 preview 或非负秒数。视频响应上限 80 MiB。
 - ZIP 和视频使用临时文件，发送完成后交由 AstrBot 的事件临时文件机制清理；实际平台是否支持文件/视频消息需要实际验证。
 - 使用群排行榜前需要更新包含 `POST /users/bindings` 的 MintAPI。背景上传暂不接入。
 

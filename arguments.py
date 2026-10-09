@@ -5,7 +5,7 @@ import shlex
 from urllib.parse import urlsplit
 from dataclasses import dataclass
 
-COMMAND_PATTERN = re.compile(r"^/?(statme|stat|pr|recent|bp|beatmapset|beatmap|bind|unbind|mode|minthelp|nb|fix|analyze|history|scorehistory|score|search|preview|bpm|cover|mp|rating|oa|pp|previewvideo|rank|top5|mpwatch)(?=\s|:|#|$)", re.I)
+COMMAND_PATTERN = re.compile(r"^/?(statme|stat|pr|recent|bp|beatmapset|beatmap|bind|unbind|mode|minthelp|nb|fix|analyze|history|scorehistory|score|search|preview|bpm|cover|mp|rating|oa|pp|previewv|rank|top5|mpwatch)(?=\s|:|#|$)", re.I)
 MODE_NAMES = {"osu": 0, "std": 0, "standard": 0, "taiko": 1, "catch": 2, "ctb": 2, "fruits": 2, "mania": 3}
 
 
@@ -93,17 +93,17 @@ def parse_command(text: str, mentions: list[str]) -> Command:
         page, algorithm, team_type, seen = 1, "osuplus", None, set()
         while tokens:
             flag = tokens.pop(0)
-            allowed = {"--page", "--team-type"} | ({"--algorithm"} if name == "rating" else set())
+            allowed = {"-p", "-t"} | ({"-a"} if name == "rating" else set())
             if flag not in allowed or flag in seen or not tokens:
-                raise ValueError("使用 --page 页码、--team-type 队伍类型；rating 还支持 --algorithm 算法。")
+                raise ValueError("使用 -p 页码、-t 队伍类型；rating 还支持 -a 算法。")
             seen.add(flag)
             value = tokens.pop(0).lower()
-            if flag == "--page":
+            if flag == "-p":
                 minimum = 0 if name == "mp" else 1
                 if not re.fullmatch(r"[0-9]+", value) or not minimum <= int(value) <= 1000000:
                     raise ValueError(f"页码必须为 {minimum}～1000000。")
                 page = int(value)
-            elif flag == "--algorithm":
+            elif flag == "-a":
                 if value not in {"osuplus", "bathbot", "flashlight"}:
                     raise ValueError("评分算法必须为 osuplus、bathbot 或 flashlight。")
                 algorithm = value
@@ -134,12 +134,12 @@ def parse_command(text: str, mentions: list[str]) -> Command:
         words, seen, page, cursor = [], set(), 1, None
         while tokens:
             token = tokens.pop(0)
-            if token in {"--page", "--cursor"}:
+            if token in {"-p", "-c"}:
                 if token in seen or not tokens:
-                    raise ValueError("搜索参数使用 --page 2 或 --cursor 游标，不能重复。")
+                    raise ValueError("搜索参数使用 -p 2 或 -c 游标，不能重复。")
                 seen.add(token)
                 value = shlex.split(tokens.pop(0))[0]
-                if token == "--page":
+                if token == "-p":
                     if not value.isascii() or not value.isdigit() or not 1 <= int(value) <= 100:
                         raise ValueError("搜索图片页码必须为 1～100。")
                     page = int(value)
@@ -147,42 +147,42 @@ def parse_command(text: str, mentions: list[str]) -> Command:
                     if not value.strip() or len(value) > 4096:
                         raise ValueError("搜索游标必须为 1～4096 字符。")
                     cursor = value
-            elif token.startswith("--"):
-                raise ValueError("搜索只支持 --page 和 --cursor。")
+            elif token.startswith("-"):
+                raise ValueError("搜索只支持 -p 和 -c。")
             else:
                 words.append(token)
         query = ' '.join(words)
         if not 1 <= len(query) <= 500:
             raise ValueError("请使用 /search 关键词，关键词长度为 1～500 字符。")
         return Command(name, mode, query=query, page=page, cursor=cursor)
-    if name in {"preview", "previewvideo"}:
+    if name in {"preview", "previewv"}:
         tokens = shlex.split(tail)
         if not tokens or not re.fullmatch(r"[0-9]+", tokens[0]) or not 0 < int(tokens[0]) <= 2147483647:
-            raise ValueError("请使用 /preview 谱面ID [--mods HD,DT] [--format gif或png]。")
+            raise ValueError("请使用 /preview 谱面ID [-m HD,DT] [-f gif或png]。")
         map_id = int(tokens.pop(0))
         mods, format, seen, start, duration = None, "gif", set(), "preview", 30.0
         while tokens:
             flag = tokens.pop(0)
-            allowed = {"--mods", "--start", "--duration"} if name == "previewvideo" else {"--mods", "--format"}
+            allowed = {"-m", "-s", "-d"} if name == "previewv" else {"-m", "-f"}
             if flag not in allowed or flag in seen or not tokens:
-                raise ValueError("预览支持 --mods HD,DT 和 --format gif或png。")
+                raise ValueError("预览支持 -m HD,DT 和 -f gif或png。")
             seen.add(flag)
             value = tokens.pop(0).upper()
-            if flag in {"--start", "--duration"}:
-                if flag == "--start" and value == "PREVIEW":
+            if flag in {"-s", "-d"}:
+                if flag == "-s" and value == "PREVIEW":
                     start = "preview"
                     continue
                 try:
                     number = float(value)
                 except ValueError:
                     raise ValueError("视频起点为 preview 或非负秒数，时长为 0～60 秒。")
-                if not math.isfinite(number) or (flag == "--start" and number < 0) or (flag == "--duration" and not 0 < number <= 60):
+                if not math.isfinite(number) or (flag == "-s" and number < 0) or (flag == "-d" and not 0 < number <= 60):
                     raise ValueError("视频起点必须非负，时长必须大于 0 且不超过 60 秒。")
-                if flag == "--start":
+                if flag == "-s":
                     start = str(number)
                 else:
                     duration = number
-            elif flag == "--format":
+            elif flag == "-f":
                 if value not in {"GIF", "PNG"}:
                     raise ValueError("预览格式必须为 gif 或 png。")
                 format = value.lower()
@@ -211,11 +211,11 @@ def parse_command(text: str, mentions: list[str]) -> Command:
         options = tokens[1:]
         while options:
             flag = options.pop(0)
-            if name != "scorehistory" or flag not in {"--mods", "--page"} or flag in seen or not options:
-                raise ValueError("scorehistory 支持 --mods HD,HR 和 --page 2；score 只接受谱面ID。")
+            if name != "scorehistory" or flag not in {"-m", "-p"} or flag in seen or not options:
+                raise ValueError("scorehistory 支持 -m HD,HR 和 -p 2；score 只接受谱面ID。")
             seen.add(flag)
             value = options.pop(0)
-            if flag == "--page":
+            if flag == "-p":
                 if not value.isascii() or not value.isdigit() or not 1 <= int(value) <= 1000000:
                     raise ValueError("页码必须为 1～1000000。")
                 page = int(value)

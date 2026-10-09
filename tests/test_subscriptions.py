@@ -219,5 +219,5 @@ class WatchParsingTests(unittest.TestCase):
         for action in ['list', 'stopall']:
             self.assertEqual(arguments.parse_command('/mpwatch ' + action, []).action, action)
         self.assertEqual(arguments.parse_command('/mpwatch stop 123', []).action, 'stop')
-        for text in ['/mpwatch','/mpwatch stop','/mpwatch 123 --page 2','/mpwatch list 1','/mpwatch 0','/mpwatch https://evil.test/mp/1']:
+        for text in ['/mpwatch','/mpwatch stop','/mpwatch 123 -p 2','/mpwatch list 1','/mpwatch 0','/mpwatch https://evil.test/mp/1']:
             with self.assertRaises(ValueError): arguments.parse_command(text, [])

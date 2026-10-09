@@ -50,14 +50,23 @@ def event_for(parts, adapter="aiocqhttp", raw=None, wake=False, group=True):
 
 
 class ParsingTests(unittest.TestCase):
+    def test_short_options_reject_old_long_names_and_video_command(self):
+        for text in ["/mp 123 --page 2", "/rating 123 --algorithm bathbot",
+                     "/search Blue Zenith --cursor abc", "/preview 123 --mods HD",
+                     "/previewv 123 --duration 20", "/previewvideo 123", "/search x -x value"]:
+            with self.subTest(text=text), self.assertRaises(ValueError):
+                arguments.parse_command(text, [])
+        command = arguments.parse_command('/previewv 123 -m HD,DT -s 20 -d 15', [])
+        self.assertEqual((command.name, command.mods, command.start, command.duration), ('previewv', 'HD,DT', '20.0', 15))
+
     def test_match_links_options_and_contract(self):
         for source in ["123456", "https://osu.ppy.sh/community/matches/123456", "https://osu.ppy.sh/mp/123456?x=1#game"]:
-            command = arguments.parse_command(f"/mp {source} --page 0 --team-type tag-coop", [])
+            command = arguments.parse_command(f"/mp {source} -p 0 -t tag-coop", [])
             request = service.build_request(command, identity.Identity("qq", "100"), "yaowan")
             self.assertEqual(request.path, "/multiplayer/history")
             self.assertEqual(request.params, {"mp_id": 123456, "page": 0, "theme": "default", "team_type": "tag-coop"})
         for algorithm in ["osuplus", "bathbot", "flashlight"]:
-            command = arguments.parse_command(f"/rating 123 --algorithm {algorithm} --page 2 --team-type team-vs", [])
+            command = arguments.parse_command(f"/rating 123 -a {algorithm} -p 2 -t team-vs", [])
             request = service.build_request(command, identity.Identity("qq", "100"), "default")
             self.assertEqual(request.path, "/multiplayer/rating")
             self.assertEqual(request.params["algorithm"], algorithm)
@@ -67,16 +76,16 @@ class ParsingTests(unittest.TestCase):
 
     def test_invalid_match_arguments(self):
         for text in ["/mp", "/mp 0", "/mp 2147483648", "/mp https://evil.test/mp/123", "/mp https://osu.ppy.sh/beatmaps/123",
-                     "/mp https://osu.ppy.sh@evil.test/mp/123", "/mp 123 --algorithm bathbot", "/mp 123 --page -1",
-                     "/mp 123 --page 1 --page 2", "/rating 123 --page 0", "/rating 123 --algorithm unknown",
-                     "/rating 123 --team-type tag-coop", "/rating 123 --algorithm", "/rating 123:3"]:
+                     "/mp https://osu.ppy.sh@evil.test/mp/123", "/mp 123 -a bathbot", "/mp 123 -p -1",
+                     "/mp 123 -p 1 -p 2", "/rating 123 -p 0", "/rating 123 -a unknown",
+                     "/rating 123 -t tag-coop", "/rating 123 -a", "/rating 123:3"]:
             with self.subTest(text=text), self.assertRaises(ValueError):
                 arguments.parse_command(text, [])
         with self.assertRaises(ValueError):
             arguments.parse_command("/mp 123", ["200"])
 
     def test_search_keyword_mode_and_cursor_contract(self):
-        command = arguments.parse_command('/search artist:"Blue Zenith" stars>5 --page 2 --cursor abc+/=:3', [])
+        command = arguments.parse_command('/search artist:"Blue Zenith" stars>5 -p 2 -c abc+/=:3', [])
         request = service.build_request(command, identity.Identity("qq", "100"), "default")
         self.assertEqual(request.path, "/beatmap/search/image")
         self.assertEqual(request.params, {"query": 'artist:"Blue Zenith" stars>5', "page": 2, "mode": "mania", "cursor_string": "abc+/="})
@@ -91,15 +100,15 @@ class ParsingTests(unittest.TestCase):
                 request = service.build_request(arguments.parse_command(text, []), identity.Identity("qq", "100"), "yaowan")
                 self.assertEqual((request.path, request.params[key]), (path, 123))
                 self.assertNotIn("platform", request.params)
-        request = service.build_request(arguments.parse_command("/preview 123 --mods hd,dt --format png", []), identity.Identity("qq", "100"), "default")
+        request = service.build_request(arguments.parse_command("/preview 123 -m hd,dt -f png", []), identity.Identity("qq", "100"), "default")
         self.assertEqual(request.params, {"beatmap_id": 123, "format": "png", "mods": ["HD", "DT"], "selection": "auto"})
         self.assertEqual(request.image_types, ("png",))
         self.assertEqual(arguments.parse_command("/preview 123", []).format, "gif")
-        self.assertNotIn("mods", service.build_request(arguments.parse_command("/preview 123 --mods NM", []), identity.Identity("qq", "100"), "default").params)
+        self.assertNotIn("mods", service.build_request(arguments.parse_command("/preview 123 -m NM", []), identity.Identity("qq", "100"), "default").params)
 
     def test_new_commands_reject_bad_arguments_and_mentions(self):
-        for text in ["/search", "/search x --page 0", "/search x --cursor", "/search x --page 2 --page 3", "/search x --unknown 2",
-                     "/preview 0", "/preview 123 --format mp4", "/preview 123 --mods NM,HD", "/preview 123 --mods", "/preview 123:3",
+        for text in ["/search", "/search x -p 0", "/search x -c", "/search x -p 2 -p 3", "/search x --unknown 2",
+                     "/preview 0", "/preview 123 -f mp4", "/preview 123 -m NM,HD", "/preview 123 -m", "/preview 123:3",
                      "/cover -1", "/beatmapset 2147483648", "/bpm 123 extra"]:
             with self.subTest(text=text), self.assertRaises(ValueError):
                 arguments.parse_command(text, [])
@@ -126,7 +135,7 @@ class ParsingTests(unittest.TestCase):
                  ("/analyze:3", "/user_info/extra/performance_analyze", {"theme": "default"}),
                  ("/history #90:3", "/user_info/history", {"days": 90, "format": "png"}),
                  ("/score 123:3", "/score/user_score", {"beatmap_id": 123, "theme": "yaowan"}),
-                 ("/scorehistory 123 --mods hd,hr --page 2:3", "/score/history", {"beatmap_id": 123, "mods": "HD,HR", "page": 2, "format": "png"})]
+                 ("/scorehistory 123 -m hd,hr -p 2:3", "/score/history", {"beatmap_id": 123, "mods": "HD,HR", "page": 2, "format": "png"})]
         for text, path, expected in cases:
             with self.subTest(text=text):
                 command = arguments.parse_command(text, ["200"])
@@ -141,8 +150,8 @@ class ParsingTests(unittest.TestCase):
     def test_extended_invalid_arguments(self):
         for text in ["/nb 7", "/history 30", "/nb #0", "/nb #366", "/nb #7 #8", "/history #3651",
                      "/nb #abc", "/history #7x", "/fix #7", "/analyze 3", "/score", "/scorehistory -1",
-                     "/score 123 --page 2", "/scorehistory 123 --page 0", "/scorehistory 123 --page",
-                     "/scorehistory 123 --mods NM,HD", "/scorehistory 123 --mods HD,", "/scorehistory 123 --page 2 --page 3",
+                     "/score 123 -p 2", "/scorehistory 123 -p 0", "/scorehistory 123 -p",
+                     "/scorehistory 123 -m NM,HD", "/scorehistory 123 -m HD,", "/scorehistory 123 -p 2 -p 3",
                      "/history:4", "/scorehistory 123 #7"]:
             with self.subTest(text=text), self.assertRaises(ValueError):
                 arguments.parse_command(text, [])
@@ -249,8 +258,8 @@ class HttpTests(unittest.IsolatedAsyncioTestCase):
         plugin = main.MintOsuPlugin(SimpleNamespace(), {})
         plugin._client = self.client
         self.extra_headers = {"X-Page": "2", "X-Page-Count": "3"}
-        for text, path in [("/mp 123 --page 2", "/multiplayer/history"),
-                           ("/rating https://osu.ppy.sh/mp/123 --algorithm bathbot --page 2", "/multiplayer/rating")]:
+        for text, path in [("/mp 123 -p 2", "/multiplayer/history"),
+                           ("/rating https://osu.ppy.sh/mp/123 -a bathbot -p 2", "/multiplayer/rating")]:
             event = event_for([Plain(text)])
             self.assertTrue(main.MintCommandFilter().filter(event, {}))
             results = [result async for result in plugin.handle_command(event)]
@@ -260,13 +269,13 @@ class HttpTests(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(self.requests[-1][2]["mp_id"], "123")
             self.assertNotIn("platform_uid", self.requests[-1][2])
         self.assertEqual(self.requests[-1][2]["algorithm"], "bathbot")
-        results = [result async for result in plugin.handle_command(event_for([Plain("/mp 123 --page 0")]))]
+        results = [result async for result in plugin.handle_command(event_for([Plain("/mp 123 -p 0")]))]
         self.assertIn("全部", results[0].chain[1].text)
 
     async def test_all_extended_commands_send_images_for_mentioned_user(self):
         plugin = main.MintOsuPlugin(SimpleNamespace(), {"theme": "yaowan"})
         plugin._client = self.client
-        for text in ["/nb #7:3", "/fix:3", "/analyze:3", "/history #90:3", "/score 123:3", "/scorehistory 123 --mods NM --page 2:3"]:
+        for text in ["/nb #7:3", "/fix:3", "/analyze:3", "/history #90:3", "/score 123:3", "/scorehistory 123 -m NM -p 2:3"]:
             with self.subTest(text=text):
                 event = event_for([Plain(text), At(qq="200")])
                 self.assertTrue(main.MintCommandFilter().filter(event, {}))
@@ -304,7 +313,7 @@ class HttpTests(unittest.IsolatedAsyncioTestCase):
         self.reply, self.content_type = b"\x00\x00\x00\x18ftypisomfixture", "video/mp4"
         plugin = main.MintOsuPlugin(None, {"base_url": str(self.server.make_url('/')).rstrip('/'), "access_token": "token"})
         plugin._client = self.client
-        results = [r async for r in plugin.handle_command(event_for([Plain('/previewvideo 123 --mods HD,DT')]))]
+        results = [r async for r in plugin.handle_command(event_for([Plain('/previewv 123 -m HD,DT')]))]
         component = results[0].chain[0]
         self.assertIsInstance(component, main.Video)
         path = component.file.removeprefix('file://')
@@ -316,7 +325,7 @@ class HttpTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(self.multi_params[-1], ['HD', 'DT'])
         self.reply = b'not a video'
         with self.assertRaises(client_module.MintAPIError):
-            await self.client.request(service.build_request(arguments.parse_command('/previewvideo 123', []), identity.resolve_identity('aiocqhttp', 'adapter-1', '100'), 'default'))
+            await self.client.request(service.build_request(arguments.parse_command('/previewv 123', []), identity.resolve_identity('aiocqhttp', 'adapter-1', '100'), 'default'))
 
     async def test_live_json_larger_than_default_and_delete_no_content(self):
         self.reply, self.content_type = b'{"padding":"' + b'x' * 70000 + b'"}', "application/json"
@@ -340,7 +349,7 @@ class HttpTests(unittest.IsolatedAsyncioTestCase):
         plugin = main.MintOsuPlugin(SimpleNamespace(), {})
         plugin._client = self.client
         self.reply, self.content_type = b"GIF89a" + b"fixture", "image/gif"
-        results = [result async for result in plugin.handle_command(event_for([Plain("/preview 123 --mods HD,DT")]))]
+        results = [result async for result in plugin.handle_command(event_for([Plain("/preview 123 -m HD,DT")]))]
         self.assertIsInstance(results[0].chain[0], Image)
         self.assertEqual(self.multi_params[-1], ["HD", "DT"])
         self.assertEqual(self.requests[-1][2]["selection"], "auto")
@@ -348,7 +357,7 @@ class HttpTests(unittest.IsolatedAsyncioTestCase):
         results = [result async for result in plugin.handle_command(event_for([Plain("/cover 123")]))]
         self.assertIsInstance(results[0].chain[0], Image)
         self.reply, self.content_type = b"GIF89afixture", "image/gif"
-        request = service.build_request(arguments.parse_command("/preview 123 --format png", []), identity.Identity("qq", "100"), "default")
+        request = service.build_request(arguments.parse_command("/preview 123 -f png", []), identity.Identity("qq", "100"), "default")
         with self.assertRaises(client_module.MintAPIError):
             await self.client.request(request)
 
@@ -356,10 +365,10 @@ class HttpTests(unittest.IsolatedAsyncioTestCase):
         self.extra_headers = {"X-Page": "2", "X-Page-Count": "10", "X-Total": "120", "X-Next-Cursor": "abc+/="}
         plugin = main.MintOsuPlugin(SimpleNamespace(), {})
         plugin._client = self.client
-        results = [result async for result in plugin.handle_command(event_for([Plain("/search Blue Zenith --page 2:0")]))]
+        results = [result async for result in plugin.handle_command(event_for([Plain("/search Blue Zenith -p 2:0")]))]
         self.assertIsInstance(results[0].chain[0], Image)
         self.assertIn("2/10", results[0].chain[1].text)
-        self.assertIn("--cursor abc+/=", results[0].chain[1].text)
+        self.assertIn("-c abc+/=", results[0].chain[1].text)
         self.assertEqual(self.requests[-1][2]["mode"], "osu")
 
     async def test_post_json_and_no_automatic_retry(self):

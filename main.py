@@ -18,7 +18,7 @@ from .subscriptions import Subscriptions
 HELP = """Mint osu! 命令：
 /oa：自己的名片；/oa @用户：单人名片；/oa 用户名列表：ZIP，空格用户名加引号
 /pp 增加PP [@用户]：增加 PP 所需成绩与 BP 位置
-/previewvideo 谱面ID [--mods HD,DT] [--start preview] [--duration 30]：视频
+/previewv 谱面ID [-m HD,DT] [-s preview] [-d 30]：视频
 /rank:3、/top5：当前群已绑定成员的排行榜
 /stat 用户名 或 /stat @用户：资料卡
 /statme：自己的资料卡
@@ -30,18 +30,18 @@ HELP = """Mint osu! 命令：
 /analyze [@用户]：BP 成绩分析
 /history [@用户] [#天数]：PP/排名趋势，默认 30 天
 /score [@用户] 谱面ID：个人谱面成绩
-/scorehistory [@用户] 谱面ID [--mods HD,HR] [--page 2]：谱面成绩历史
+/scorehistory [@用户] 谱面ID [-m HD,HR] [-p 2]：谱面成绩历史
 /beatmap 谱面ID：谱面信息
-/search 关键词 [--page 2] [--cursor 游标]：谱面搜索，末尾可加 :模式
-/preview 谱面ID [--mods HD,DT] [--format png]：默认 GIF 预览
+/search 关键词 [-p 2] [-c 游标]：谱面搜索，末尾可加 :模式
+/preview 谱面ID [-m HD,DT] [-f png]：默认 GIF 预览
 /bpm 谱面ID：BPM 时间轴
 /cover 谱面ID：谱面封面
 /beatmapset 谱面集ID：谱面集信息
-/mp 比赛ID或链接 [--page 2] [--team-type team-vs]：比赛历史
-/rating 比赛ID或链接 [--algorithm bathbot] [--page 2]：比赛评分
+/mp 比赛ID或链接 [-p 2] [-t team-vs]：比赛历史
+/rating 比赛ID或链接 [-a bathbot] [-p 2]：比赛评分
 /mpwatch 比赛ID或链接：订阅比赛；list：列表；stop 比赛ID或链接、stopall：停止
 订阅每会话最多 3 场，每 30 秒检查；群内修改需要管理员权限
-评分算法：osuplus（默认）、bathbot、flashlight；支持 --team-type
+评分算法：osuplus（默认）、bathbot、flashlight；支持 -t
 /bind 用户名、/unbind：绑定与解绑
 /mode 0～3：默认模式
 资料卡和成绩命令末尾可加 :0～:3。
@@ -169,7 +169,7 @@ class MintOsuPlugin(Star):
                 result = await group_ranking(self._client, command, caller, event)
             else:
                 result = await self._client.request(build_request(command, caller, theme))
-            if command.name == "previewvideo":
+            if command.name == "previewv":
                 path = save_attachment(event, result, ".mp4")
                 yield event.chain_result([Video.fromFileSystem(path)])
                 return
@@ -187,15 +187,15 @@ class MintOsuPlugin(Star):
                     if command.page == 0:
                         notice = "全部已结束对局。"
                     else:
-                        notice = f"第 {headers.get('X-Page', str(command.page))}/{headers.get('X-Page-Count', '?')} 页；使用 --page 翻页，保留比赛及筛选条件。"
+                        notice = f"第 {headers.get('X-Page', str(command.page))}/{headers.get('X-Page-Count', '?')} 页；使用 -p 翻页，保留比赛及筛选条件。"
                     chain.append(Plain(notice))
                 if command.name == "search":
                     headers = getattr(result, "headers", {})
                     page, pages = headers.get("X-Page", str(command.page)), headers.get("X-Page-Count", "?")
-                    notice = f"搜索本批第 {page}/{pages} 页，共 {headers.get('X-Total', '?')} 个谱面集。使用 --page 翻本批图片页。"
+                    notice = f"搜索本批第 {page}/{pages} 页，共 {headers.get('X-Total', '?')} 个谱面集。使用 -p 翻本批图片页。"
                     cursor = headers.get("X-Next-Cursor")
                     if cursor:
-                        notice += f"\n下一批保留关键词与模式，使用 --page 1 --cursor {cursor}"
+                        notice += f"\n下一批保留关键词与模式，使用 -p 1 -c {cursor}"
                     chain.append(Plain(notice))
                 yield event.chain_result(chain)
             else:
