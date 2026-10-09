@@ -113,3 +113,14 @@ python3 tools/update_qq_panels.py --config /path/to/AstrBot/data/cmd_config.json
 工具分别更新私聊（c2c）和群聊（group）的全局面板，不存在时创建。更新前备份到 `data/temp/qq-panels-backup-*.json`，更新后读取核验；已有的指定用户或指定群面板保留关联关系。多个全局面板无法确定目标时停止写入。与私聊底部菜单独立配置，无需重启 AstrBot。
 
 协议参考：[创建指令面板](https://bot.q.qq.com/wiki/develop/api-v2/autogen/api/v2_panels.post.html)。
+
+## 比赛查询
+
+- `/mp 比赛ID`：比赛历史图，默认第 1 页；`--page 2` 翻页，`--page 0` 返回全部已结束对局。
+- `/rating 比赛ID`：玩家评分图，默认 osuplus 算法；`--algorithm bathbot` 或 `--algorithm flashlight` 切换算法。
+- 两者均接受 `https://osu.ppy.sh/community/matches/123456` 或旧版 `https://osu.ppy.sh/mp/123456` 链接，无需绑定。
+- 两者均支持 `--team-type head-to-head`、`--team-type team-vs`；mp 还支持 tag-coop、tag-team-vs，rating 不支持 Tag 评分。
+- 混合比赛需指定队伍类型；翻页时保留 ID、算法和队伍类型，例如 `/rating 123456 --algorithm bathbot --team-type team-vs --page 2`。
+- 不接受 @用户 或模式后缀，模式由比赛决定。评分页码从 1 开始，图片回复附带页数。
+
+这些用法接入现有 `/multiplayer/history` 和 `/multiplayer/rating`；指定算法属于 rating 的参数，并非第三条独立命令。实时订阅尚未接入。

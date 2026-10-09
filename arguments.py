@@ -1,9 +1,10 @@
 """Parse Mint commands independently of AstrBot and preserve usernames with spaces."""
 import re
 import shlex
+from urllib.parse import urlsplit
 from dataclasses import dataclass
 
-COMMAND_PATTERN = re.compile(r"^/?(statme|stat|pr|recent|bp|beatmapset|beatmap|bind|unbind|mode|minthelp|nb|fix|analyze|history|scorehistory|score|search|preview|bpm|cover)(?=\s|:|#|$)", re.I)
+COMMAND_PATTERN = re.compile(r"^/?(statme|stat|pr|recent|bp|beatmapset|beatmap|bind|unbind|mode|minthelp|nb|fix|analyze|history|scorehistory|score|search|preview|bpm|cover|mp|rating)(?=\s|:|#|$)", re.I)
 MODE_NAMES = {"osu": 0, "std": 0, "standard": 0, "taiko": 1, "catch": 2, "ctb": 2, "fruits": 2, "mania": 3}
 
 
@@ -22,6 +23,9 @@ class Command:
     query: str | None = None
     cursor: str | None = None
     format: str = "gif"
+    match_id: int | None = None
+    algorithm: str = "osuplus"
+    team_type: str | None = None
 
 
 def parse_command(text: str, mentions: list[str]) -> Command:
@@ -36,6 +40,43 @@ def parse_command(text: str, mentions: list[str]) -> Command:
     target = mentions[0] if mentions else None
     if target and name not in {"stat", "pr", "recent", "bp", "nb", "fix", "analyze", "history", "score", "scorehistory"}:
         raise ValueError("这个命令不支持 @用户。")
+    if name in {"mp", "rating"}:
+        tokens = shlex.split(tail)
+        if not tokens:
+            raise ValueError(f"请使用 /{name} 比赛ID或osu!比赛链接。")
+        value = tokens.pop(0)
+        if not re.fullmatch(r"[0-9]+", value):
+            url = urlsplit(value)
+            path = re.fullmatch(r"/(?:community/matches|mp)/([0-9]+)/?", url.path)
+            if url.scheme not in {"http", "https"} or url.netloc.lower() != "osu.ppy.sh" or not path:
+                raise ValueError("请提供比赛 ID 或 https://osu.ppy.sh/community/matches/比赛ID 链接。")
+            value = path[1]
+        match_id = int(value)
+        if not 1 <= match_id <= 2147483647:
+            raise ValueError("比赛 ID 必须为正整数且不超过 2147483647。")
+        page, algorithm, team_type, seen = 1, "osuplus", None, set()
+        while tokens:
+            flag = tokens.pop(0)
+            allowed = {"--page", "--team-type"} | ({"--algorithm"} if name == "rating" else set())
+            if flag not in allowed or flag in seen or not tokens:
+                raise ValueError("使用 --page 页码、--team-type 队伍类型；rating 还支持 --algorithm 算法。")
+            seen.add(flag)
+            value = tokens.pop(0).lower()
+            if flag == "--page":
+                minimum = 0 if name == "mp" else 1
+                if not re.fullmatch(r"[0-9]+", value) or not minimum <= int(value) <= 1000000:
+                    raise ValueError(f"页码必须为 {minimum}～1000000。")
+                page = int(value)
+            elif flag == "--algorithm":
+                if value not in {"osuplus", "bathbot", "flashlight"}:
+                    raise ValueError("评分算法必须为 osuplus、bathbot 或 flashlight。")
+                algorithm = value
+            else:
+                types = {"head-to-head", "team-vs"} | ({"tag-coop", "tag-team-vs"} if name == "mp" else set())
+                if value not in types:
+                    raise ValueError("评分仅支持 head-to-head、team-vs；比赛历史还支持 tag-coop、tag-team-vs。")
+                team_type = value
+        return Command(name, match_id=match_id, page=page, algorithm=algorithm, team_type=team_type)
 
     mode = None
     if name in {"stat", "statme", "pr", "recent", "bp", "nb", "fix", "analyze", "history", "score", "scorehistory", "search"}:

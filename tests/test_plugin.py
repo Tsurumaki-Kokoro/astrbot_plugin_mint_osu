@@ -50,6 +50,31 @@ def event_for(parts, adapter="aiocqhttp", raw=None, wake=False, group=True):
 
 
 class ParsingTests(unittest.TestCase):
+    def test_match_links_options_and_contract(self):
+        for source in ["123456", "https://osu.ppy.sh/community/matches/123456", "https://osu.ppy.sh/mp/123456?x=1#game"]:
+            command = arguments.parse_command(f"/mp {source} --page 0 --team-type tag-coop", [])
+            request = service.build_request(command, identity.Identity("qq", "100"), "yaowan")
+            self.assertEqual(request.path, "/multiplayer/history")
+            self.assertEqual(request.params, {"mp_id": 123456, "page": 0, "theme": "default", "team_type": "tag-coop"})
+        for algorithm in ["osuplus", "bathbot", "flashlight"]:
+            command = arguments.parse_command(f"/rating 123 --algorithm {algorithm} --page 2 --team-type team-vs", [])
+            request = service.build_request(command, identity.Identity("qq", "100"), "default")
+            self.assertEqual(request.path, "/multiplayer/rating")
+            self.assertEqual(request.params["algorithm"], algorithm)
+            self.assertEqual(request.params["page"], 2)
+        command = arguments.parse_command("/rating 123", [])
+        self.assertEqual((command.page, command.algorithm, command.team_type), (1, "osuplus", None))
+
+    def test_invalid_match_arguments(self):
+        for text in ["/mp", "/mp 0", "/mp 2147483648", "/mp https://evil.test/mp/123", "/mp https://osu.ppy.sh/beatmaps/123",
+                     "/mp https://osu.ppy.sh@evil.test/mp/123", "/mp 123 --algorithm bathbot", "/mp 123 --page -1",
+                     "/mp 123 --page 1 --page 2", "/rating 123 --page 0", "/rating 123 --algorithm unknown",
+                     "/rating 123 --team-type tag-coop", "/rating 123 --algorithm", "/rating 123:3"]:
+            with self.subTest(text=text), self.assertRaises(ValueError):
+                arguments.parse_command(text, [])
+        with self.assertRaises(ValueError):
+            arguments.parse_command("/mp 123", ["200"])
+
     def test_search_keyword_mode_and_cursor_contract(self):
         command = arguments.parse_command('/search artist:"Blue Zenith" stars>5 --page 2 --cursor abc+/=:3', [])
         request = service.build_request(command, identity.Identity("qq", "100"), "default")
@@ -220,6 +245,24 @@ class ParsingTests(unittest.TestCase):
 
 
 class HttpTests(unittest.IsolatedAsyncioTestCase):
+    async def test_match_queries_and_page_headers_use_image_chain(self):
+        plugin = main.MintOsuPlugin(SimpleNamespace(), {})
+        plugin._client = self.client
+        self.extra_headers = {"X-Page": "2", "X-Page-Count": "3"}
+        for text, path in [("/mp 123 --page 2", "/multiplayer/history"),
+                           ("/rating https://osu.ppy.sh/mp/123 --algorithm bathbot --page 2", "/multiplayer/rating")]:
+            event = event_for([Plain(text)])
+            self.assertTrue(main.MintCommandFilter().filter(event, {}))
+            results = [result async for result in plugin.handle_command(event)]
+            self.assertIsInstance(results[0].chain[0], Image)
+            self.assertIn("2/3", results[0].chain[1].text)
+            self.assertEqual(self.requests[-1][1], path)
+            self.assertEqual(self.requests[-1][2]["mp_id"], "123")
+            self.assertNotIn("platform_uid", self.requests[-1][2])
+        self.assertEqual(self.requests[-1][2]["algorithm"], "bathbot")
+        results = [result async for result in plugin.handle_command(event_for([Plain("/mp 123 --page 0")]))]
+        self.assertIn("全部", results[0].chain[1].text)
+
     async def test_all_extended_commands_send_images_for_mentioned_user(self):
         plugin = main.MintOsuPlugin(SimpleNamespace(), {"theme": "yaowan"})
         plugin._client = self.client

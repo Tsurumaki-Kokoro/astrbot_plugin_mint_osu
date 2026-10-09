@@ -17,6 +17,13 @@ class Request:
 
 def build_request(command: Command, caller: Identity, theme: str) -> Request:
     name = command.name
+    if name in {"mp", "rating"}:
+        params = {"mp_id": command.match_id, "page": command.page, "theme": "default"}
+        if command.team_type is not None:
+            params["team_type"] = command.team_type
+        if name == "rating":
+            params["algorithm"] = command.algorithm
+        return Request("GET", "/multiplayer/history" if name == "mp" else "/multiplayer/rating", params)
     if name == "search":
         params = {"query": command.query, "page": command.page, "mode": {0: "osu", 1: "taiko", 2: "catch", 3: "mania"}.get(command.mode, "any")}
         if command.cursor:
@@ -106,6 +113,8 @@ def error_message(command: Command, status: int, detail: str, retry_after: str |
     if status == 409 and command.name == "bind":
         return "你已经绑定过账号，请先使用 /unbind 解绑。"
     if status == 404:
+        if command.name in {"mp", "rating"}:
+            return "找不到这个比赛，请检查比赛 ID 或链接。"
         if "osu! user not found" in detail:
             return "找不到这个 osu! 玩家，请检查用户名。"
         if "User not found" in detail or "binding not found" in detail:

@@ -31,6 +31,9 @@ HELP = """Mint osu! 命令：
 /bpm 谱面ID：BPM 时间轴
 /cover 谱面ID：谱面封面
 /beatmapset 谱面集ID：谱面集信息
+/mp 比赛ID或链接 [--page 2] [--team-type team-vs]：比赛历史
+/rating 比赛ID或链接 [--algorithm bathbot] [--page 2]：比赛评分
+评分算法：osuplus（默认）、bathbot、flashlight；支持 --team-type
 /bind 用户名、/unbind：绑定与解绑
 /mode 0～3：默认模式
 资料卡和成绩命令末尾可加 :0～:3。
@@ -136,6 +139,13 @@ class MintOsuPlugin(Star):
             result = await self._client.request(build_request(command, caller, theme))
             if isinstance(result, bytes):
                 chain = [Image.fromBytes(result)]
+                if command.name in {"mp", "rating"}:
+                    headers = getattr(result, "headers", {})
+                    if command.page == 0:
+                        notice = "全部已结束对局。"
+                    else:
+                        notice = f"第 {headers.get('X-Page', str(command.page))}/{headers.get('X-Page-Count', '?')} 页；使用 --page 翻页，保留比赛及筛选条件。"
+                    chain.append(Plain(notice))
                 if command.name == "search":
                     headers = getattr(result, "headers", {})
                     page, pages = headers.get("X-Page", str(command.page)), headers.get("X-Page-Count", "?")
