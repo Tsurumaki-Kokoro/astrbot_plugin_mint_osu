@@ -26,6 +26,11 @@ HELP = """Mint osu! 命令：
 /score [@用户] 谱面ID：个人谱面成绩
 /scorehistory [@用户] 谱面ID [--mods HD,HR] [--page 2]：谱面成绩历史
 /beatmap 谱面ID：谱面信息
+/search 关键词 [--page 2] [--cursor 游标]：谱面搜索，末尾可加 :模式
+/preview 谱面ID [--mods HD,DT] [--format png]：默认 GIF 预览
+/bpm 谱面ID：BPM 时间轴
+/cover 谱面ID：谱面封面
+/beatmapset 谱面集ID：谱面集信息
 /bind 用户名、/unbind：绑定与解绑
 /mode 0～3：默认模式
 资料卡和成绩命令末尾可加 :0～:3。
@@ -130,7 +135,16 @@ class MintOsuPlugin(Star):
                 self._client = self._create_client()
             result = await self._client.request(build_request(command, caller, theme))
             if isinstance(result, bytes):
-                yield event.chain_result([Image.fromBytes(result)])
+                chain = [Image.fromBytes(result)]
+                if command.name == "search":
+                    headers = getattr(result, "headers", {})
+                    page, pages = headers.get("X-Page", str(command.page)), headers.get("X-Page-Count", "?")
+                    notice = f"搜索本批第 {page}/{pages} 页，共 {headers.get('X-Total', '?')} 个谱面集。使用 --page 翻本批图片页。"
+                    cursor = headers.get("X-Next-Cursor")
+                    if cursor:
+                        notice += f"\n下一批保留关键词与模式，使用 --page 1 --cursor {cursor}"
+                    chain.append(Plain(notice))
+                yield event.chain_result(chain)
             else:
                 message = {"bind": "绑定成功。可使用 /statme 查询资料卡。", "unbind": "已解除绑定。", "mode": "默认模式已更新。"}[command.name]
                 yield event.plain_result(message)

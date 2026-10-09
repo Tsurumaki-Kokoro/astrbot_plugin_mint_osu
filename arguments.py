@@ -3,7 +3,7 @@ import re
 import shlex
 from dataclasses import dataclass
 
-COMMAND_PATTERN = re.compile(r"^/?(statme|stat|pr|recent|bp|beatmap|bind|unbind|mode|minthelp|nb|fix|analyze|history|scorehistory|score)(?=\s|:|#|$)", re.I)
+COMMAND_PATTERN = re.compile(r"^/?(statme|stat|pr|recent|bp|beatmapset|beatmap|bind|unbind|mode|minthelp|nb|fix|analyze|history|scorehistory|score|search|preview|bpm|cover)(?=\s|:|#|$)", re.I)
 MODE_NAMES = {"osu": 0, "std": 0, "standard": 0, "taiko": 1, "catch": 2, "ctb": 2, "fruits": 2, "mania": 3}
 
 
@@ -19,6 +19,9 @@ class Command:
     days: int | None = None
     mods: str | None = None
     page: int = 1
+    query: str | None = None
+    cursor: str | None = None
+    format: str = "gif"
 
 
 def parse_command(text: str, mentions: list[str]) -> Command:
@@ -35,15 +38,64 @@ def parse_command(text: str, mentions: list[str]) -> Command:
         raise ValueError("这个命令不支持 @用户。")
 
     mode = None
-    if name in {"stat", "statme", "pr", "recent", "bp", "nb", "fix", "analyze", "history", "score", "scorehistory"}:
+    if name in {"stat", "statme", "pr", "recent", "bp", "nb", "fix", "analyze", "history", "score", "scorehistory", "search"}:
         suffix = re.search(r":\s*([+-]?\d+)\s*$", tail)
         if suffix:
             mode = int(suffix[1])
             if mode not in range(4):
                 raise ValueError("模式必须是 :0、:1、:2 或 :3。")
             tail = tail[:suffix.start()].strip()
-        elif ":" in tail:
+        elif ":" in tail and name != "search":
             raise ValueError("模式请放在末尾，使用 :0～:3。")
+    if name == "search":
+        shlex.split(tail)  # Reject unmatched quotes, preserve official query syntax below.
+        tokens = re.findall(r"""(?:[^\s"']+|"[^"]*"|'[^']*')+""", tail)
+        words, seen, page, cursor = [], set(), 1, None
+        while tokens:
+            token = tokens.pop(0)
+            if token in {"--page", "--cursor"}:
+                if token in seen or not tokens:
+                    raise ValueError("搜索参数使用 --page 2 或 --cursor 游标，不能重复。")
+                seen.add(token)
+                value = shlex.split(tokens.pop(0))[0]
+                if token == "--page":
+                    if not value.isascii() or not value.isdigit() or not 1 <= int(value) <= 100:
+                        raise ValueError("搜索图片页码必须为 1～100。")
+                    page = int(value)
+                else:
+                    if not value.strip() or len(value) > 4096:
+                        raise ValueError("搜索游标必须为 1～4096 字符。")
+                    cursor = value
+            elif token.startswith("--"):
+                raise ValueError("搜索只支持 --page 和 --cursor。")
+            else:
+                words.append(token)
+        query = ' '.join(words)
+        if not 1 <= len(query) <= 500:
+            raise ValueError("请使用 /search 关键词，关键词长度为 1～500 字符。")
+        return Command(name, mode, query=query, page=page, cursor=cursor)
+    if name == "preview":
+        tokens = shlex.split(tail)
+        if not tokens or not re.fullmatch(r"[0-9]+", tokens[0]) or not 0 < int(tokens[0]) <= 2147483647:
+            raise ValueError("请使用 /preview 谱面ID [--mods HD,DT] [--format gif或png]。")
+        map_id = int(tokens.pop(0))
+        mods, format, seen = None, "gif", set()
+        while tokens:
+            flag = tokens.pop(0)
+            if flag not in {"--mods", "--format"} or flag in seen or not tokens:
+                raise ValueError("预览支持 --mods HD,DT 和 --format gif或png。")
+            seen.add(flag)
+            value = tokens.pop(0).upper()
+            if flag == "--format":
+                if value not in {"GIF", "PNG"}:
+                    raise ValueError("预览格式必须为 gif 或 png。")
+                format = value.lower()
+            else:
+                items = value.split(',')
+                if any(not re.fullmatch(r"[A-Z0-9]{2,4}", item) for item in items) or ("NM" in items and len(items) != 1):
+                    raise ValueError("Mods 使用逗号分隔的缩写；NM 必须单独使用。")
+                mods = ','.join(dict.fromkeys(items))
+        return Command(name, beatmap_id=map_id, mods=mods, format=format)
     if name in {"nb", "history"}:
         days = 1 if name == "nb" else 30
         if tail:
@@ -98,9 +150,9 @@ def parse_command(text: str, mentions: list[str]) -> Command:
         if not tail:
             raise ValueError("请使用 /bind osu!用户名。")
         return Command(name, username=tail)
-    if name == "beatmap":
+    if name in {"beatmap", "beatmapset", "bpm", "cover"}:
         if not re.fullmatch(r"[0-9]+", tail) or not 0 < int(tail) <= 2147483647:
-            raise ValueError("请使用 /beatmap 谱面ID，ID 必须为正整数。")
+            raise ValueError(f"请使用 /{name} {'谱面集ID' if name == 'beatmapset' else '谱面ID'}，ID 必须为正整数。")
         return Command(name, beatmap_id=int(tail))
     if name == "mode":
         value = MODE_NAMES.get(tail.lower())

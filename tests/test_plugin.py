@@ -50,6 +50,44 @@ def event_for(parts, adapter="aiocqhttp", raw=None, wake=False, group=True):
 
 
 class ParsingTests(unittest.TestCase):
+    def test_search_keyword_mode_and_cursor_contract(self):
+        command = arguments.parse_command('/search artist:"Blue Zenith" stars>5 --page 2 --cursor abc+/=:3', [])
+        request = service.build_request(command, identity.Identity("qq", "100"), "default")
+        self.assertEqual(request.path, "/beatmap/search/image")
+        self.assertEqual(request.params, {"query": 'artist:"Blue Zenith" stars>5', "page": 2, "mode": "mania", "cursor_string": "abc+/="})
+        request = service.build_request(arguments.parse_command("/search Blue Zenith", []), identity.Identity("qq", "100"), "default")
+        self.assertEqual(request.params["mode"], "any")
+        self.assertNotIn("platform", request.params)
+
+    def test_new_map_commands_and_preview_options(self):
+        for text, path, key in [("/beatmapset 123", "/beatmap/beatmapset", "beatmapset_id"),
+                                ("/cover 123", "/beatmap/cover", "beatmap_id"), ("/bpm 123", "/beatmap/bpm", "beatmap_id")]:
+            with self.subTest(text=text):
+                request = service.build_request(arguments.parse_command(text, []), identity.Identity("qq", "100"), "yaowan")
+                self.assertEqual((request.path, request.params[key]), (path, 123))
+                self.assertNotIn("platform", request.params)
+        request = service.build_request(arguments.parse_command("/preview 123 --mods hd,dt --format png", []), identity.Identity("qq", "100"), "default")
+        self.assertEqual(request.params, {"beatmap_id": 123, "format": "png", "mods": ["HD", "DT"], "selection": "auto"})
+        self.assertEqual(request.image_types, ("png",))
+        self.assertEqual(arguments.parse_command("/preview 123", []).format, "gif")
+        self.assertNotIn("mods", service.build_request(arguments.parse_command("/preview 123 --mods NM", []), identity.Identity("qq", "100"), "default").params)
+
+    def test_new_commands_reject_bad_arguments_and_mentions(self):
+        for text in ["/search", "/search x --page 0", "/search x --cursor", "/search x --page 2 --page 3", "/search x --unknown 2",
+                     "/preview 0", "/preview 123 --format mp4", "/preview 123 --mods NM,HD", "/preview 123 --mods", "/preview 123:3",
+                     "/cover -1", "/beatmapset 2147483648", "/bpm 123 extra"]:
+            with self.subTest(text=text), self.assertRaises(ValueError):
+                arguments.parse_command(text, [])
+        for text in ["/search x", "/preview 123", "/bpm 123", "/cover 123", "/beatmapset 123"]:
+            with self.subTest(text=text), self.assertRaises(ValueError):
+                arguments.parse_command(text, ["200"])
+
+    def test_structured_api_errors(self):
+        command = arguments.parse_command("/cover 123", [])
+        self.assertIn("谱面", service.error_message(command, 404, '{"code":"BEATMAP_NOT_FOUND"}', None))
+        command = arguments.parse_command("/stat", ["200"])
+        self.assertIn("对方", service.error_message(command, 404, '{"code":"USER_NOT_BOUND"}', None))
+
     def test_history_days_use_hash_and_preserve_mode(self):
         for text, name, days, mode in [("/nb", "nb", 1, None), ("/nb#7:3", "nb", 7, 3),
                                       ("/history", "history", 30, None), ("/history #90:1", "history", 90, 1)]:
@@ -202,10 +240,13 @@ class HttpTests(unittest.IsolatedAsyncioTestCase):
         self.status = 200
         self.reply = PNG
         self.content_type = "image/png"
+        self.extra_headers = {}
+        self.multi_params = []
         async def handler(request):
             self.requests.append((request.method, request.path, dict(request.query), request.headers.get("access_token"),
                                   await request.json() if request.method == "POST" else None))
-            return web.Response(status=self.status, body=self.reply, content_type=self.content_type, headers={"Retry-After": "5"})
+            self.multi_params.append(request.query.getall("mods", []))
+            return web.Response(status=self.status, body=self.reply, content_type=self.content_type, headers={"Retry-After": "5", **self.extra_headers})
         app = web.Application()
         app.router.add_route("*", "/{tail:.*}", handler)
         self.server = TestServer(app)
@@ -224,6 +265,32 @@ class HttpTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual((method, path, token), ("GET", "/score/recent_play", "test-secret"))
         self.assertEqual(params["include_fails"], "false")
         self.assertEqual(params["game_mode"], "3")
+
+    async def test_preview_gif_repeated_mods_and_cover_jpeg(self):
+        plugin = main.MintOsuPlugin(SimpleNamespace(), {})
+        plugin._client = self.client
+        self.reply, self.content_type = b"GIF89a" + b"fixture", "image/gif"
+        results = [result async for result in plugin.handle_command(event_for([Plain("/preview 123 --mods HD,DT")]))]
+        self.assertIsInstance(results[0].chain[0], Image)
+        self.assertEqual(self.multi_params[-1], ["HD", "DT"])
+        self.assertEqual(self.requests[-1][2]["selection"], "auto")
+        self.reply, self.content_type = b"\xff\xd8\xfffixture", "image/jpeg"
+        results = [result async for result in plugin.handle_command(event_for([Plain("/cover 123")]))]
+        self.assertIsInstance(results[0].chain[0], Image)
+        self.reply, self.content_type = b"GIF89afixture", "image/gif"
+        request = service.build_request(arguments.parse_command("/preview 123 --format png", []), identity.Identity("qq", "100"), "default")
+        with self.assertRaises(client_module.MintAPIError):
+            await self.client.request(request)
+
+    async def test_search_image_preserves_pagination_metadata(self):
+        self.extra_headers = {"X-Page": "2", "X-Page-Count": "10", "X-Total": "120", "X-Next-Cursor": "abc+/="}
+        plugin = main.MintOsuPlugin(SimpleNamespace(), {})
+        plugin._client = self.client
+        results = [result async for result in plugin.handle_command(event_for([Plain("/search Blue Zenith --page 2:0")]))]
+        self.assertIsInstance(results[0].chain[0], Image)
+        self.assertIn("2/10", results[0].chain[1].text)
+        self.assertIn("--cursor abc+/=", results[0].chain[1].text)
+        self.assertEqual(self.requests[-1][2]["mode"], "osu")
 
     async def test_post_json_and_no_automatic_retry(self):
         command = arguments.parse_command("/bind Player Name", [])

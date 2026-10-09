@@ -11,6 +11,13 @@ class MintAPIError(Exception):
         self.status, self.detail, self.retry_after = status, detail, retry_after
 
 
+class ImagePayload(bytes):
+    def __new__(cls, data: bytes, headers: dict):
+        instance = super().__new__(cls, data)
+        instance.headers = headers
+        return instance
+
+
 class MintClient:
     def __init__(self, base_url: str, token: str, timeout: int = 90, concurrency: int = 2):
         parsed = urlsplit(base_url.strip())
@@ -39,9 +46,19 @@ class MintClient:
                 if response.status != 200:
                     raise MintAPIError(response.status, data.decode("utf-8", errors="replace"), response.headers.get("Retry-After"))
                 if request.image:
-                    if response.content_type != "image/png" or not data.startswith(b"\x89PNG\r\n\x1a\n"):
+                    detected = None
+                    if data.startswith(b"\x89PNG\r\n\x1a\n"):
+                        detected = "png"
+                    elif data.startswith((b"GIF87a", b"GIF89a")):
+                        detected = "gif"
+                    elif data.startswith(b"\xff\xd8\xff"):
+                        detected = "jpeg"
+                    elif data.startswith(b"RIFF") and data[8:12] == b"WEBP":
+                        detected = "webp"
+                    if detected not in request.image_types or response.content_type not in {"image/" + kind for kind in request.image_types}:
                         raise MintAPIError(502, "Invalid image response")
-                    return bytes(data)
+                    headers = {key: response.headers[key] for key in ("X-Page", "X-Page-Count", "X-Total", "X-Next-Cursor") if key in response.headers}
+                    return ImagePayload(bytes(data), headers)
                 import json
                 try:
                     result = json.loads(data)

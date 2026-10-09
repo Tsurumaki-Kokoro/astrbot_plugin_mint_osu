@@ -1,5 +1,6 @@
 """Translate parsed commands into the existing MintAPI contract."""
 from dataclasses import dataclass
+import json
 from .arguments import Command
 from .identity import Identity
 
@@ -11,10 +12,27 @@ class Request:
     params: dict
     body: dict | None = None
     image: bool = True
+    image_types: tuple[str, ...] = ("png",)
 
 
 def build_request(command: Command, caller: Identity, theme: str) -> Request:
     name = command.name
+    if name == "search":
+        params = {"query": command.query, "page": command.page, "mode": {0: "osu", 1: "taiko", 2: "catch", 3: "mania"}.get(command.mode, "any")}
+        if command.cursor:
+            params["cursor_string"] = command.cursor
+        return Request("GET", "/beatmap/search/image", params)
+    if name == "preview":
+        params = {"beatmap_id": command.beatmap_id, "format": command.format, "selection": "auto"}
+        if command.mods and command.mods != "NM":
+            params["mods"] = command.mods.split(',')
+        return Request("GET", "/beatmap/preview/image", params, image_types=(command.format,))
+    if name == "bpm":
+        return Request("GET", "/beatmap/bpm", {"beatmap_id": command.beatmap_id})
+    if name == "cover":
+        return Request("GET", "/beatmap/cover", {"beatmap_id": command.beatmap_id}, image_types=("png", "jpeg", "webp"))
+    if name == "beatmapset":
+        return Request("GET", "/beatmap/beatmapset", {"beatmapset_id": command.beatmap_id, "theme": "default"})
     identity = {"platform": caller.platform, "platform_uid": command.target_uid or caller.uid}
     params = dict(identity)
     if command.mode is not None:
@@ -65,6 +83,24 @@ def build_request(command: Command, caller: Identity, theme: str) -> Request:
 
 
 def error_message(command: Command, status: int, detail: str, retry_after: str | None) -> str:
+    try:
+        error = json.loads(detail)
+    except (ValueError, TypeError):
+        error = {}
+    if isinstance(error, dict):
+        code = error.get("code")
+        if code == "USER_NOT_BOUND":
+            return "对方尚未绑定 osu! 账号。" if command.target_uid else "你尚未绑定 osu! 账号，请使用 /bind 用户名。"
+        messages = {
+            "OSU_USER_NOT_FOUND": "找不到这个 osu! 玩家，请检查用户名。",
+            "BEATMAP_NOT_FOUND": "找不到这个谱面或谱面集，请检查 ID。",
+            "LOCAL_SCORE_NOT_COLLECTED": "本地暂未收录该无榜谱面的成绩，未收录不代表没有游玩过。",
+            "PREVIEW_UNAVAILABLE": "预览生成服务暂时不可用，请稍后重试。",
+        }
+        if code in messages:
+            return messages[code]
+        if code == "INVALID_ARGUMENT" and isinstance(error.get("message"), str):
+            return error["message"][:500]
     if status == 403:
         return "MintAPI 鉴权或访问失败，请管理员检查接口密钥。"
     if status == 409 and command.name == "bind":
