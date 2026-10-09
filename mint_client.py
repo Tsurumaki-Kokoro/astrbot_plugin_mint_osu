@@ -37,12 +37,14 @@ class MintClient:
             async with self._session.request(request.method, self.base_url + request.path, params=params,
                                              json=request.body, allow_redirects=False) as response:
                 # Cap attachments and errors independently; never send API URLs to a platform.
-                limit = (80 * 1024 * 1024 if request.video else 20 * 1024 * 1024) if (request.image or request.video) and response.status == 200 else 64 * 1024
+                limit = (80 * 1024 * 1024 if request.video else 20 * 1024 * 1024) if (request.image or request.video) and response.status == 200 else (request.json_limit if response.status == 200 else 64 * 1024)
                 data = bytearray()
                 async for chunk in response.content.iter_chunked(65536):
                     data.extend(chunk)
                     if len(data) > limit:
                         raise MintAPIError(502, "Response too large")
+                if response.status == 204 and request.method == "DELETE" and not request.image and not request.video:
+                    return {}
                 if response.status != 200:
                     raise MintAPIError(response.status, data.decode("utf-8", errors="replace"), response.headers.get("Retry-After"))
                 if request.video:

@@ -6,13 +6,14 @@ import aiohttp
 from astrbot.api import AstrBotConfig, logger
 from astrbot.api.event import AstrMessageEvent, filter
 from astrbot.api.message_components import At, AtAll, Plain, Image, Video
-from astrbot.api.star import Context, Star, register
+from astrbot.api.star import Context, Star, StarTools, register
 
 from .arguments import COMMAND_PATTERN, parse_command
 from .identity import resolve_identity
 from .mint_client import MintAPIError, MintClient
 from .service import build_request, error_message
 from .extras import avatar_archive, group_ranking, save_attachment
+from .subscriptions import Subscriptions
 
 HELP = """Mint osu! 命令：
 /oa：自己的名片；/oa @用户：单人名片；/oa 用户名列表：ZIP，空格用户名加引号
@@ -38,6 +39,8 @@ HELP = """Mint osu! 命令：
 /beatmapset 谱面集ID：谱面集信息
 /mp 比赛ID或链接 [--page 2] [--team-type team-vs]：比赛历史
 /rating 比赛ID或链接 [--algorithm bathbot] [--page 2]：比赛评分
+/mpwatch 比赛ID或链接：订阅比赛；list：列表；stop 比赛ID或链接、stopall：停止
+订阅每会话最多 3 场，每 30 秒检查；群内修改需要管理员权限
 评分算法：osuplus（默认）、bathbot、flashlight；支持 --team-type
 /bind 用户名、/unbind：绑定与解绑
 /mode 0～3：默认模式
@@ -114,13 +117,22 @@ class MintOsuPlugin(Star):
         super().__init__(context)
         self.config = config
         self._client: MintClient | None = None
+        self._watch: Subscriptions | None = None
 
     async def initialize(self):
         # Leave help usable when an administrator has not configured the API yet.
         try:
             self._client = self._create_client()
+            self._subscriptions().start()
         except ValueError as exc:
             logger.warning(str(exc))
+
+    def _subscriptions(self):
+        if self._watch is None:
+            path = StarTools.get_data_dir("astrbot_plugin_mint_osu") / "subscriptions.sqlite3"
+            self._watch = Subscriptions(path, self._client, self.context.send_message)
+        self._watch.client = self._client
+        return self._watch
 
     def _create_client(self) -> MintClient:
         return MintClient(str(self.config.get("api_base_url", "")), str(self.config.get("api_token", "")),
@@ -134,6 +146,14 @@ class MintOsuPlugin(Star):
             command = parse_command(command_text(event), mentioned_users(event))
             if command.name == "minthelp":
                 yield event.plain_result(HELP)
+                return
+            if command.name == "mpwatch":
+                if command.action == "subscribe" and self._client is None:
+                    self._client = self._create_client()
+                watch = self._subscriptions()
+                yield event.plain_result(await watch.command(command, event))
+                if self._client is not None:
+                    watch.start()
                 return
             caller = resolve_identity(event.get_platform_name(), event.get_platform_id(), event.get_sender_id())
             theme = str(self.config.get("theme", "default"))
@@ -196,6 +216,9 @@ class MintOsuPlugin(Star):
             event.stop_event()
 
     async def terminate(self):
+        if self._watch is not None:
+            await self._watch.close()
+            self._watch = None
         if self._client is not None:
             await self._client.close()
             self._client = None

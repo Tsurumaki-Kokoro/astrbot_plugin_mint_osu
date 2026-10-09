@@ -318,6 +318,15 @@ class HttpTests(unittest.IsolatedAsyncioTestCase):
         with self.assertRaises(client_module.MintAPIError):
             await self.client.request(service.build_request(arguments.parse_command('/previewvideo 123', []), identity.resolve_identity('aiocqhttp', 'adapter-1', '100'), 'default'))
 
+    async def test_live_json_larger_than_default_and_delete_no_content(self):
+        self.reply, self.content_type = b'{"padding":"' + b'x' * 70000 + b'"}', "application/json"
+        result = await self.client.request(service.Request("GET", "/multiplayer/live/subscriptions/test/updates", {}, image=False, json_limit=8 * 1024 * 1024))
+        self.assertEqual(len(result['padding']), 70000)
+        with self.assertRaises(client_module.MintAPIError):
+            await self.client.request(service.Request("GET", "/other", {}, image=False))
+        self.status = 204
+        self.assertEqual(await self.client.request(service.Request("DELETE", "/multiplayer/live/subscriptions/test", {}, image=False)), {})
+
     async def test_auth_query_and_binary_image(self):
         command = arguments.parse_command("/pr:3", [])
         result = await self.client.request(service.build_request(command, identity.Identity("qq", "100"), "default"))

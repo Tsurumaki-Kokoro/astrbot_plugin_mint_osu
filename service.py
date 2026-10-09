@@ -14,6 +14,7 @@ class Request:
     image: bool = True
     image_types: tuple[str, ...] = ("png",)
     video: bool = False
+    json_limit: int = 64 * 1024
 
 
 def build_request(command: Command, caller: Identity, theme: str) -> Request:
@@ -120,10 +121,12 @@ def error_message(command: Command, status: int, detail: str, retry_after: str |
             return error["message"][:500]
     if status == 403:
         return "MintAPI 鉴权或访问失败，请管理员检查接口密钥。"
+    if status == 409 and command.name == "mpwatch":
+        return "比赛追踪数量已达到服务上限，请停止已有订阅或联系管理员。"
     if status == 409 and command.name == "bind":
         return "你已经绑定过账号，请先使用 /unbind 解绑。"
     if status == 404:
-        if command.name in {"mp", "rating"}:
+        if command.name in {"mp", "rating", "mpwatch"}:
             return "找不到这个比赛，请检查比赛 ID 或链接。"
         if "osu! user not found" in detail:
             return "找不到这个 osu! 玩家，请检查用户名。"

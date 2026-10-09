@@ -14,12 +14,6 @@
     },
     {
       "type": "command",
-      "name": "/stat",
-      "desc": "输入用户名查询资料",
-      "only_admin": false
-    },
-    {
-      "type": "command",
       "name": "/pr",
       "desc": "最近成绩，不含失败",
       "only_admin": false
@@ -118,6 +112,12 @@
       "type": "command",
       "name": "/previewvideo",
       "desc": "输入谱面ID生成视频",
+      "only_admin": false
+    },
+    {
+      "type": "command",
+      "name": "/mpwatch",
+      "desc": "订阅比赛，list或stop管理",
       "only_admin": false
     }
   ],

@@ -19,12 +19,12 @@ class QQPanelTests(unittest.TestCase):
         panel = json.loads(panels.PAYLOAD_PATH.read_text())
         panels.validate_panel(panel)
         names = {i['name'][1:] for i in panel['items']}
-        self.assertEqual(names, {'minthelp', 'statme', 'stat', 'pr', 'recent', 'bp', 'nb',
+        self.assertEqual(names, {'minthelp', 'statme', 'mpwatch', 'pr', 'recent', 'bp', 'nb',
                                 'fix', 'analyze', 'history', 'score', 'scorehistory',
                                 'beatmap', 'bind', 'mode', 'oa', 'pp', 'rank', 'top5', 'previewvideo'})
         for item in panel['items']:
             suffix = {'/stat': ' Player Name', '/bind': ' Player Name', '/mode': ' 3',
-                      '/score': ' 123', '/scorehistory': ' 123', '/beatmap': ' 123', '/pp': ' 100', '/previewvideo': ' 123'}.get(item['name'], '')
+                      '/score': ' 123', '/scorehistory': ' 123', '/beatmap': ' 123', '/pp': ' 100', '/previewvideo': ' 123', '/mpwatch': ' 123'}.get(item['name'], '')
             self.assertEqual(arguments.parse_command(item['name'] + suffix, []).name, item['name'][1:])
 
     def test_pagination_collects_all_records(self):

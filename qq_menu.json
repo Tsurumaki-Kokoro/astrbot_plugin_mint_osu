@@ -91,6 +91,11 @@
             "type": "send_message",
             "name": "群前五",
             "send_message": "/top5"
+          },
+          {
+            "type": "send_message",
+            "name": "比赛订阅",
+            "send_message": "/mpwatch "
           }
         ]
       },

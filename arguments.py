@@ -5,7 +5,7 @@ import shlex
 from urllib.parse import urlsplit
 from dataclasses import dataclass
 
-COMMAND_PATTERN = re.compile(r"^/?(statme|stat|pr|recent|bp|beatmapset|beatmap|bind|unbind|mode|minthelp|nb|fix|analyze|history|scorehistory|score|search|preview|bpm|cover|mp|rating|oa|pp|previewvideo|rank|top5)(?=\s|:|#|$)", re.I)
+COMMAND_PATTERN = re.compile(r"^/?(statme|stat|pr|recent|bp|beatmapset|beatmap|bind|unbind|mode|minthelp|nb|fix|analyze|history|scorehistory|score|search|preview|bpm|cover|mp|rating|oa|pp|previewvideo|rank|top5|mpwatch)(?=\s|:|#|$)", re.I)
 MODE_NAMES = {"osu": 0, "std": 0, "standard": 0, "taiko": 1, "catch": 2, "ctb": 2, "fruits": 2, "mania": 3}
 
 
@@ -31,6 +31,7 @@ class Command:
     pp: float | None = None
     start: str = "preview"
     duration: float = 30
+    action: str = "subscribe"
 
 
 def parse_command(text: str, mentions: list[str]) -> Command:
@@ -45,6 +46,17 @@ def parse_command(text: str, mentions: list[str]) -> Command:
     target = mentions[0] if mentions else None
     if target and name not in {"stat", "pr", "recent", "bp", "nb", "fix", "analyze", "history", "score", "scorehistory", "oa", "pp"}:
         raise ValueError("这个命令不支持 @用户。")
+    if name == "mpwatch":
+        tokens = shlex.split(tail)
+        if tokens == ["list"] or tokens == ["stopall"]:
+            return Command(name, action=tokens[0])
+        action = "subscribe"
+        if tokens and tokens[0] == "stop":
+            action = tokens.pop(0)
+        if len(tokens) != 1:
+            raise ValueError("使用 /mpwatch 比赛ID或链接、list、stop 比赛ID或链接、stopall。")
+        match_command = parse_command("/mp " + shlex.quote(tokens[0]), [])
+        return Command(name, match_id=match_command.match_id, action=action)
     if name == "oa":
         names = shlex.split(tail)
         if target and names:

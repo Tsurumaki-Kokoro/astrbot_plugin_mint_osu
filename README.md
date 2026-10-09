@@ -73,7 +73,7 @@ python -m unittest discover -s tests -v
 ```
 
 测试覆盖解析、身份、HTTP 契约和实际 AstrBot 消息组件。真实平台验证仍需启动 MintAPI，并在 QQ 私聊、群聊发送命令。
-实时比赛订阅尚未接入。
+实时比赛订阅见下方 `/mpwatch` 用法。
 
 ### 搜索与预览
 
@@ -123,7 +123,7 @@ python3 tools/update_qq_panels.py --config /path/to/AstrBot/data/cmd_config.json
 - 混合比赛需指定队伍类型；翻页时保留 ID、算法和队伍类型，例如 `/rating 123456 --algorithm bathbot --team-type team-vs --page 2`。
 - 不接受 @用户 或模式后缀，模式由比赛决定。评分页码从 1 开始，图片回复附带页数。
 
-这些用法接入现有 `/multiplayer/history` 和 `/multiplayer/rating`；指定算法属于 rating 的参数，并非第三条独立命令。实时订阅尚未接入。
+这些用法接入现有 `/multiplayer/history` 和 `/multiplayer/rating`；指定算法属于 rating 的参数，并非第三条独立命令。实时订阅使用 `/mpwatch`。
 
 ## 名片、增加 PP、群排名与视频
 
@@ -134,4 +134,16 @@ python3 tools/update_qq_panels.py --config /path/to/AstrBot/data/cmd_config.json
 - 平台不能提供完整群成员名单时提示不支持；QQ OneBot 可提供该名单，QQ 官方机器人以其适配器能力为准。当前已绑定名单超过 100 人会明确提示接口上限，不截断、不生成不完整榜单。
 - `/previewvideo 谱面ID --mods HD,DT --start preview --duration 30` 返回 MP4，时长大于 0 且最多 60 秒，起点可以是 preview 或非负秒数。视频响应上限 80 MiB。
 - ZIP 和视频使用临时文件，发送完成后交由 AstrBot 的事件临时文件机制清理；实际平台是否支持文件/视频消息需要实际验证。
-- 使用群排行榜前需要更新包含 `POST /users/bindings` 的 MintAPI。背景上传、实时比赛订阅本轮不接入。
+- 使用群排行榜前需要更新包含 `POST /users/bindings` 的 MintAPI。背景上传暂不接入。
+
+
+## 比赛订阅
+
+- `/mpwatch 比赛ID或链接`：订阅当前会话；`/mpwatch list`：查看当前会话订阅。
+- `/mpwatch stop 比赛ID或链接`、`/mpwatch stopall`：停止指定或全部订阅。群内修改需要群主、群管理员或机器人管理员权限；私聊管理自己的订阅。查看列表不要求管理员权限。
+- 每个会话最多 3 场，重复订阅不会创建新记录。每轮检查完成后等待 30 秒，同一比赛共享查询，同一单局共享图片；MintAPI 上游刷新频率由其 MatchLive 配置决定。
+- 仅推送订阅后结束且有成绩的单局图片，以及比赛关闭通知。玩家进出、选图、开局、中止的空成绩局不推送。比赛结束后自动停止，不自动生成评分；使用 `/rating` 查询。
+- SQLite 保存会话、单局推送进度、远端订阅 ID 与游标，位于 AstrBot 插件数据目录 `subscriptions.sqlite3`。重启恢复；失败保留订阅并重试，远端租期或游标过期后重新订阅，通过完整的已结束单局名单补发遗漏。停止最后一个本地订阅后取消远端订阅；取消请求失败会在后台重试。
+- 消息成功发送后才保存单局进度。正常轮询和恢复不会重复推送；若进程恰好在平台收件后、保存进度前退出，平台没有幂等发送接口时可能重复一条通知。
+- 必须更新到提供 `snapshot.games` 的 MintAPI，复用 `/multiplayer/live/subscriptions`、增量更新和单局图片接口。实时 JSON 响应最多 8 MiB，错误响应仍限制 64 KiB。
+- 当前 AstrBot QQ 官方适配器不支持会话主动推送，因此拒绝新建订阅；QQ OneBot 使用通用会话推送。其他平台需支持 AstrBot 的主动消息接口及群管理员查询。真实群消息发送仍需实机验证。
