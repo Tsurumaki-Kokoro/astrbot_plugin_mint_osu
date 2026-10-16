@@ -9,7 +9,7 @@
     {
       "type": "command",
       "name": "/statme",
-      "desc": "查询自己的资料卡",
+      "desc": "自己的资料卡，可加#天数",
       "only_admin": false
     },
     {

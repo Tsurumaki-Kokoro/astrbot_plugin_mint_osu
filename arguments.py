@@ -225,12 +225,24 @@ def parse_command(text: str, mentions: list[str]) -> Command:
                     raise ValueError("Mods 使用逗号分隔的缩写，例如 HD,HR；NM 必须单独使用。")
                 mods = ','.join(dict.fromkeys(items))
         return Command(name, mode, beatmap_id=int(tokens[0]), target_uid=target, mods=mods, page=page)
-    if name == "stat":
+    if name in {"stat", "statme"}:
+        days = None
+        comparison = re.search(r"(?:^|\s)#\s*([0-9]+)$", tail)
+        if comparison:
+            digits = comparison[1].lstrip("0") or "0"
+            days = min(int(digits), 2147483647) if len(digits) <= 10 else 2147483647
+            tail = tail[:comparison.start()].strip()
+        if "#" in tail:
+            raise ValueError("对比天数请放在末尾，使用 #非负整数，例如 /statme #7:3。")
+        if name == "statme":
+            if tail:
+                raise ValueError("请使用 /statme [#天数][:模式] 查询自己。")
+            return Command(name, mode, days=days)
         if target and tail:
             raise ValueError("用户名和 @用户只能选择一个。")
         if not target and not tail:
             raise ValueError("请使用 /stat 用户名、/stat @用户，或 /statme 查询自己。")
-        return Command(name, mode, username=tail or None, target_uid=target)
+        return Command(name, mode, username=tail or None, target_uid=target, days=days)
     if name == "bp":
         first, last = 1, None
         if tail:

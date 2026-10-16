@@ -156,6 +156,32 @@ class ParsingTests(unittest.TestCase):
             with self.subTest(text=text), self.assertRaises(ValueError):
                 arguments.parse_command(text, [])
 
+    def test_stat_comparison_days_are_forwarded(self):
+        cases = [
+            ("/statme", [], None, None, None),
+            ("/statme #0", [], 0, None, None),
+            ("/statme #7:3", [], 7, 3, None),
+            ("/stat Player Name #7:1", [], 7, 1, "Player Name"),
+            ("/stat #30:3", ["200"], 30, 3, None),
+            ("/statme #99999999999999999999", [], 2147483647, None, None),
+        ]
+        for text, mentions, days, mode, username in cases:
+            with self.subTest(text=text):
+                command = arguments.parse_command(text, mentions)
+                self.assertEqual((command.days, command.mode, command.username), (days, mode, username))
+                request = service.build_request(command, identity.Identity("qq", "100"), "default")
+                self.assertEqual(request.path, "/user_info")
+                self.assertEqual(request.params.get("compare_with"), days)
+                self.assertEqual(request.params.get("game_mode"), mode)
+                self.assertEqual(request.params.get("user_name"), username)
+                self.assertEqual(request.params["platform_uid"], "200" if mentions else "100")
+
+    def test_stat_comparison_rejects_invalid_days(self):
+        for text in ["/statme #-1", "/statme #abc", "/statme #1.5", "/statme #7 #8",
+                     "/stat Player #7 #8", "/statme 7", "/stat #7"]:
+            with self.subTest(text=text), self.assertRaises(ValueError):
+                arguments.parse_command(text, [])
+
     def test_mode_suffix_and_username_spaces(self):
         command = arguments.parse_command("/stat Player Name:3", [])
         self.assertEqual((command.name, command.username, command.mode), ("stat", "Player Name", 3))

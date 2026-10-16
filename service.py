@@ -76,6 +76,8 @@ def build_request(command: Command, caller: Identity, theme: str) -> Request:
         return Request("GET", "/score/history", params)
     if name in {"stat", "statme"}:
         params["theme"] = theme
+        if command.days is not None:
+            params["compare_with"] = command.days
         if command.username:
             params["user_name"] = command.username
         return Request("GET", "/user_info", params)
