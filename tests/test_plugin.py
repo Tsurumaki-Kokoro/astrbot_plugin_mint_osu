@@ -440,6 +440,39 @@ class HttpTests(unittest.IsolatedAsyncioTestCase):
             await self.client.request(request)
         self.assertEqual(caught.exception.status, 403)
 
+    async def test_help_returns_image_without_player_identity_or_theme(self):
+        plugin = main.MintOsuPlugin(SimpleNamespace(), {"theme": "invalid"})
+        plugin._client = self.client
+        results = [r async for r in plugin.handle_command(event_for([Plain("/minthelp")]))]
+        self.assertIsInstance(results[0].chain[0], Image)
+        self.assertEqual(len(results[0].chain), 1)
+        self.assertEqual(self.requests[-1][:4], ("GET", "/help/image", {}, "test-secret"))
+
+    async def test_help_failure_falls_back_to_text_and_keeps_admin_hint(self):
+        for status, body, content_type in [(500, b'{"code":"RENDER_FAILED"}', "application/problem+json"),
+                                          (404, b"not found", "text/plain"),
+                                          (200, b"not a png", "image/png")]:
+            with self.subTest(status=status, body=body):
+                self.status, self.reply, self.content_type = status, body, content_type
+                plugin = main.MintOsuPlugin(SimpleNamespace(), {})
+                plugin._client = self.client
+                event = event_for([Plain("/minthelp")], adapter="qq_official", group=False)
+                event.is_admin = lambda: True
+                results = [r async for r in plugin.handle_command(event)]
+                self.assertIn("/statme", results[0].chain[0].text)
+                self.assertIn("/mintpanel", results[0].chain[1].text)
+
+    async def test_help_image_keeps_admin_hint_only_in_official_admin_private_chat(self):
+        for adapter, group, admin, count in [("qq_official", False, True, 2),
+                ("qq_official", False, False, 1), ("qq_official", True, True, 1), ("aiocqhttp", False, True, 1)]:
+            plugin = main.MintOsuPlugin(SimpleNamespace(), {})
+            plugin._client = self.client
+            event = event_for([Plain("/minthelp")], adapter=adapter, group=group)
+            event.is_admin = lambda: admin
+            results = [r async for r in plugin.handle_command(event)]
+            self.assertIsInstance(results[0].chain[0], Image)
+            self.assertEqual(len(results[0].chain), count)
+
     async def test_help_and_validation_do_not_require_api(self):
         plugin = main.MintOsuPlugin(SimpleNamespace(), {})
         event = event_for([Plain("/minthelp")])

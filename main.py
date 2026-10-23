@@ -13,7 +13,7 @@ from astrbot.api.star import Context, Star, StarTools, register
 from .arguments import COMMAND_PATTERN, parse_command
 from .identity import resolve_identity
 from .mint_client import MintAPIError, MintClient
-from .service import build_request, error_message
+from .service import Request, build_request, error_message
 from .extras import avatar_archive, group_ranking, save_attachment
 from .subscriptions import Subscriptions
 from .player_subscriptions import PlayerSubscriptions
@@ -173,10 +173,17 @@ class MintOsuPlugin(Star):
                 yield event.plain_result(await self._publish_qq(command.name, event))
                 return
             if command.name == "minthelp":
-                help_text = HELP
+                try:
+                    if self._client is None:
+                        self._client = self._create_client()
+                    poster = await self._client.request(Request("GET", "/help/image", {}))
+                    chain = [Image.fromBytes(poster)]
+                except (ValueError, MintAPIError, aiohttp.ClientError, asyncio.TimeoutError) as exc:
+                    logger.warning(f"Mint help poster unavailable; using text help: {type(exc).__name__}")
+                    chain = [Plain(HELP)]
                 if event.get_platform_name().lower() == "qq_official" and event.is_private_chat() and event.is_admin():
-                    help_text += "\n管理员：/mintmenu 同步私聊菜单；/mintpanel 同步私聊和群聊指令面板。"
-                yield event.plain_result(help_text)
+                    chain.append(Plain("管理员：/mintmenu 同步私聊菜单；/mintpanel 同步私聊和群聊指令面板。"))
+                yield event.chain_result(chain)
                 return
             if command.name == "mpwatch":
                 if command.action == "subscribe" and self._client is None:

@@ -51,7 +51,7 @@
 | `/bind 用户名` | 绑定自己；已绑定需先解绑 |
 | `/unbind` | 解除自己的绑定 |
 | `/mode 0～3` | 修改自己的默认模式，也支持 osu、taiko、catch、mania |
-| `/minthelp` | 命令帮助 |
+| `/minthelp` | 指令帮助海报，接口不可用时回退文字帮助 |
 
 资料卡、pr、recent、bp 的末尾可添加模式：`:0` osu!、`:1` taiko、`:2` catch、`:3` mania。
 nb、fix、analyze、history、score、scorehistory 同样支持末尾模式，不写 @用户 时查询自己。
@@ -186,3 +186,5 @@ AstrBot 机器人管理员在目标 QQ 官方机器人的私聊中发送 `/mintm
 `player_subscription_poll_interval` 默认 30 秒（10～3600），`player_subscription_max_per_group` 默认 10 条（1～100，同玩家不同模式分别计数）。这是本插件每群的本地投递上限，不代替 MintAPI 的全局限制。MintAPI 默认约五分钟采集官方数据，插件轮询不会提高官方采集频率。修改配置后重载插件。
 
 需要支持群管理、周报和同图对比的 MintAPI 版本；重载插件即可识别指令。QQ 面板配置已同步至 `qq_panel.json`，尚需管理员按既有 `/mintpanel` 流程发布才会更新平台端面板。
+
+`/minthelp` 使用 MintAPI `GET /help/image` 获取海报，无需绑定 osu! 账号；请同时更新 MintAPI 并重载插件。配置未完成、旧版服务无此接口或图片请求失败时自动回退文字帮助，QQ 官方机器人管理员私聊仍附带菜单和面板同步提示。
