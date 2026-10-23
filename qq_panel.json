@@ -62,12 +62,6 @@
     },
     {
       "type": "command",
-      "name": "/scorehistory",
-      "desc": "输入谱面ID查询成绩历史",
-      "only_admin": false
-    },
-    {
-      "type": "command",
       "name": "/beatmap",
       "desc": "输入谱面ID查询谱面",
       "only_admin": false
@@ -76,18 +70,6 @@
       "type": "command",
       "name": "/bind",
       "desc": "输入osu!用户名绑定",
-      "only_admin": false
-    },
-    {
-      "type": "command",
-      "name": "/mode",
-      "desc": "输入0～3设置默认模式",
-      "only_admin": false
-    },
-    {
-      "type": "command",
-      "name": "/oa",
-      "desc": "自己或单个@名片，用户名列表ZIP",
       "only_admin": false
     },
     {
@@ -118,6 +100,24 @@
       "type": "command",
       "name": "/mpwatch",
       "desc": "订阅比赛，list或stop管理",
+      "only_admin": false
+    },
+    {
+      "type": "command",
+      "name": "/weekly",
+      "desc": "上周周报，可@用户或-w日期",
+      "only_admin": false
+    },
+    {
+      "type": "command",
+      "name": "/compare",
+      "desc": "谱面ID和玩家，比较同图成绩",
+      "only_admin": false
+    },
+    {
+      "type": "command",
+      "name": "/bpwatch",
+      "desc": "群玩家订阅，list、stop管理",
       "only_admin": false
     }
   ],

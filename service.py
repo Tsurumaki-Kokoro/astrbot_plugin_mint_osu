@@ -19,6 +19,13 @@ class Request:
 
 def build_request(command: Command, caller: Identity, theme: str) -> Request:
     name = command.name
+    if name == "weekly":
+        params = {"platform": caller.platform, "platform_uid": command.target_uid or caller.uid}
+        if command.mode is not None:
+            params["game_mode"] = command.mode
+        if command.week_start:
+            params["week_start"] = command.week_start
+        return Request("GET", "/user_info/weekly", params)
     if name == "oa":
         return Request("GET", "/user_info/avatar_card", {"platform": caller.platform, "platform_uid": command.target_uid or caller.uid})
     if name == "pp":
@@ -111,10 +118,15 @@ def error_message(command: Command, status: int, detail: str, retry_after: str |
         code = error.get("code")
         if code == "USER_NOT_BOUND":
             return "对方尚未绑定 osu! 账号。" if command.target_uid else "你尚未绑定 osu! 账号，请使用 /bind 用户名。"
+        if code == "HISTORY_NOT_FOUND":
+            return "该周期尚无历史快照，完整周报需要积累数据。" if command.name == "weekly" else "没有可用的 PP 或排名历史。"
+        if code == "SCORE_NOT_FOUND":
+            return "对比需要双方都有符合筛选条件的成绩。" if command.name == "compare" else "没有符合条件的成绩。"
         messages = {
             "OSU_USER_NOT_FOUND": "找不到这个 osu! 玩家，请检查用户名。",
             "BEATMAP_NOT_FOUND": "找不到这个谱面或谱面集，请检查 ID。",
             "LOCAL_SCORE_NOT_COLLECTED": "本地暂未收录该无榜谱面的成绩，未收录不代表没有游玩过。",
+            "RESOURCE_EXPIRED": "订阅已取消、过期或游标失效，请重新订阅。",
             "PREVIEW_UNAVAILABLE": "预览生成服务暂时不可用，请稍后重试。",
         }
         if code in messages:
@@ -123,6 +135,8 @@ def error_message(command: Command, status: int, detail: str, retry_after: str |
             return error["message"][:500]
     if status == 403:
         return "MintAPI 鉴权或访问失败，请管理员检查接口密钥。"
+    if status == 409 and command.name == "bpwatch":
+        return "玩家动态订阅已达到服务上限，请先取消已有订阅。"
     if status == 409 and command.name == "mpwatch":
         return "比赛追踪数量已达到服务上限，请停止已有订阅或联系管理员。"
     if status == 409 and command.name == "bind":

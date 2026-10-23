@@ -44,5 +44,17 @@
     "type": "int",
     "default": 3,
     "hint": "1～20 场；降低上限不会删除已有订阅。"
+  },
+  "player_subscription_poll_interval": {
+    "description": "玩家动态订阅检查间隔（秒）",
+    "type": "int",
+    "default": 30,
+    "hint": "10～3600 秒；读取 MintAPI 事件，官方数据采集频率由 MintAPI 决定。"
+  },
+  "player_subscription_max_per_group": {
+    "description": "每群玩家动态订阅上限",
+    "type": "int",
+    "default": 10,
+    "hint": "1～100 条；同一玩家不同模式分别计数，降低上限不会取消已有订阅。"
   }
 }

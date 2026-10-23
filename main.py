@@ -16,6 +16,8 @@ from .mint_client import MintAPIError, MintClient
 from .service import build_request, error_message
 from .extras import avatar_archive, group_ranking, save_attachment
 from .subscriptions import Subscriptions
+from .player_subscriptions import PlayerSubscriptions
+from .player_features import compare_scores
 
 HELP = """Mint osu! 命令：
 /oa：自己的名片；/oa @用户：单人名片；/oa 用户名列表：ZIP，空格用户名加引号
@@ -29,6 +31,12 @@ HELP = """Mint osu! 命令：
 /recent [@用户]：最近一条成绩，包含失败
 /bp [@用户] [序号或区间]：BP，默认第 1 条
 /nb [@用户] [#天数]：新增 BP，默认 1 天
+/weekly [@用户] [-w YYYY-MM-DD][:模式]：个人周报，默认上一完整周
+/compare [@用户] 谱面ID [-m HD,HR] [-l stable]：与自己对比
+/compare 谱面ID 用户A 用户B：两名 osu! 玩家的同图成绩，空格名字加引号
+/bpwatch [用户名或@用户][:模式]：订阅本群玩家动态，省略查询自己
+/bpwatch list [-p 2]、stop [用户名或@用户][:模式]、stopall：群内查询和取消
+玩家订阅增删需要群管理员；省略模式时订阅 Standard，stop 默认取消玩家全部模式
 /fix [@用户]：BP 补 FC 分析
 /analyze [@用户]：BP 成绩分析
 /history [@用户] [#天数]：PP/排名趋势，默认 30 天
@@ -121,6 +129,7 @@ class MintOsuPlugin(Star):
         self.config = config
         self._client: MintClient | None = None
         self._watch: Subscriptions | None = None
+        self._player_watch: PlayerSubscriptions | None = None
         self._qq_publish_lock = asyncio.Lock()
 
     async def initialize(self):
@@ -128,6 +137,7 @@ class MintOsuPlugin(Star):
         try:
             self._client = self._create_client()
             self._subscriptions().start()
+            self._player_subscriptions().start()
         except ValueError as exc:
             logger.warning(str(exc))
 
@@ -139,6 +149,15 @@ class MintOsuPlugin(Star):
                 self.config.get("subscription_max_per_session", 3))
         self._watch.client = self._client
         return self._watch
+
+    def _player_subscriptions(self):
+        if self._player_watch is None:
+            path = StarTools.get_data_dir("astrbot_plugin_mint_osu") / "player_subscriptions.sqlite3"
+            self._player_watch = PlayerSubscriptions(path, self._client, self.context.send_message,
+                self.config.get("player_subscription_poll_interval", 30),
+                self.config.get("player_subscription_max_per_group", 10))
+        self._player_watch.client = self._client
+        return self._player_watch
 
     def _create_client(self) -> MintClient:
         return MintClient(str(self.config.get("api_base_url", "")), str(self.config.get("api_token", "")),
@@ -167,6 +186,13 @@ class MintOsuPlugin(Star):
                 if self._client is not None:
                     watch.start()
                 return
+            if command.name == "bpwatch":
+                if self._client is None:
+                    self._client = self._create_client()
+                watch = self._player_subscriptions()
+                yield event.plain_result(await watch.command(command, event))
+                watch.start()
+                return
             caller = resolve_identity(event.get_platform_name(), event.get_platform_id(), event.get_sender_id())
             theme = str(self.config.get("theme", "default"))
             if theme not in {"default", "yaowan"}:
@@ -177,7 +203,9 @@ class MintOsuPlugin(Star):
                 attachment = await avatar_archive(self._client, command, event)
                 yield event.chain_result([attachment])
                 return
-            if command.name in {"rank", "top5"}:
+            if command.name == "compare":
+                result = await compare_scores(self._client, command, caller)
+            elif command.name in {"rank", "top5"}:
                 result = await group_ranking(self._client, command, caller, event)
             else:
                 result = await self._client.request(build_request(command, caller, theme))
@@ -262,6 +290,9 @@ class MintOsuPlugin(Star):
         return "\n".join(reports)
 
     async def terminate(self):
+        if self._player_watch is not None:
+            await self._player_watch.close()
+            self._player_watch = None
         if self._watch is not None:
             await self._watch.close()
             self._watch = None

@@ -5,7 +5,7 @@ import shlex
 from urllib.parse import urlsplit
 from dataclasses import dataclass
 
-COMMAND_PATTERN = re.compile(r"^/?(statme|stat|pr|recent|bp|beatmapset|beatmap|bind|unbind|mode|minthelp|nb|fix|analyze|history|scorehistory|score|search|preview|bpm|cover|mp|rating|oa|pp|previewv|rank|top5|mpwatch|mintmenu|mintpanel)(?=\s|:|#|$)", re.I)
+COMMAND_PATTERN = re.compile(r"^/?(statme|stat|pr|recent|bp|beatmapset|beatmap|bind|unbind|mode|minthelp|nb|fix|analyze|history|scorehistory|score|search|preview|bpm|cover|mp|rating|oa|pp|previewv|rank|top5|mpwatch|weekly|compare|bpwatch|mintmenu|mintpanel)(?=\s|:|#|$)", re.I)
 MODE_NAMES = {"osu": 0, "std": 0, "standard": 0, "taiko": 1, "catch": 2, "ctb": 2, "fruits": 2, "mania": 3}
 
 
@@ -32,6 +32,8 @@ class Command:
     start: str = "preview"
     duration: float = 30
     action: str = "subscribe"
+    week_start: str | None = None
+    legacy_only: bool | None = None
 
 
 def parse_command(text: str, mentions: list[str]) -> Command:
@@ -44,7 +46,7 @@ def parse_command(text: str, mentions: list[str]) -> Command:
     if len(set(mentions)) > 1:
         raise ValueError("一次只能查询一位 @用户。")
     target = mentions[0] if mentions else None
-    if target and name not in {"stat", "pr", "recent", "bp", "nb", "fix", "analyze", "history", "score", "scorehistory", "oa", "pp"}:
+    if target and name not in {"stat", "pr", "recent", "bp", "nb", "fix", "analyze", "history", "score", "scorehistory", "oa", "pp", "weekly", "compare", "bpwatch"}:
         raise ValueError("这个命令不支持 @用户。")
     if name in {"mintmenu", "mintpanel"}:
         if tail:
@@ -61,6 +63,75 @@ def parse_command(text: str, mentions: list[str]) -> Command:
             raise ValueError("使用 /mpwatch 比赛ID或链接、list、stop 比赛ID或链接、stopall。")
         match_command = parse_command("/mp " + shlex.quote(tokens[0]), [])
         return Command(name, match_id=match_command.match_id, action=action)
+    if name in {"weekly", "compare", "bpwatch"}:
+        mode = None
+        suffix = re.search(r":\s*([+-]?\d+)\s*$", tail)
+        if suffix:
+            mode = int(suffix[1])
+            if mode not in range(4):
+                raise ValueError("模式必须是 :0～:3。")
+            tail = tail[:suffix.start()].strip()
+        tokens = shlex.split(tail)
+        if name == "weekly":
+            date = None
+            if tokens:
+                from datetime import date as Date
+                if len(tokens) != 2 or tokens[0] != "-w":
+                    raise ValueError("使用 /weekly [@用户] [-w 周一日期][:模式]。")
+                try:
+                    value = Date.fromisoformat(tokens[1])
+                except ValueError:
+                    raise ValueError("周报日期使用 YYYY-MM-DD 格式的周一。")
+                if value.weekday() != 0 or value.year < 2000 or value.isoformat() != tokens[1]:
+                    raise ValueError("周报日期必须是 2000 年之后的周一，格式 YYYY-MM-DD。")
+                date = value.isoformat()
+            return Command(name, mode, target_uid=target, week_start=date)
+        if name == "bpwatch":
+            action, page = "subscribe", 1
+            if tokens and tokens[0].lower() in {"list", "stop", "stopall"}:
+                action = tokens.pop(0).lower()
+            if action == "list":
+                if target or mode is not None:
+                    raise ValueError("使用 /bpwatch list [-p 页码] 查看当前群的全部模式订阅。")
+                if tokens:
+                    if len(tokens) != 2 or tokens[0] != "-p" or not tokens[1].isascii() or not tokens[1].isdigit() or not 1 <= int(tokens[1]) <= 1000000:
+                        raise ValueError("使用 /bpwatch list [-p 页码]。")
+                    page = int(tokens[1])
+                return Command(name, action=action, page=page)
+            if action == "stopall":
+                if tokens or target or mode is not None:
+                    raise ValueError("/bpwatch stopall 不接受额外参数。")
+                return Command(name, action=action)
+            if len(tokens) > 1 or target and tokens or any(len(x) > 128 for x in tokens):
+                raise ValueError("使用 /bpwatch [用户名或@用户][:模式]，空格用户名加引号；stop 取消订阅。")
+            return Command(name, mode, username=tokens[0] if tokens else None, target_uid=target, action=action)
+        if not tokens or not tokens[0].isascii() or not tokens[0].isdigit() or not 1 <= int(tokens[0]) <= 2147483647:
+            raise ValueError("使用 /compare [@用户] 谱面ID，或 /compare 谱面ID 用户A 用户B。")
+        map_id = int(tokens.pop(0))
+        names, mods, legacy, seen = [], None, None, set()
+        while tokens:
+            token = tokens.pop(0)
+            if token in {"-m", "-l"}:
+                if token in seen or not tokens:
+                    raise ValueError("对比支持 -m HD,HR 和 -l stable或lazer，不能重复。")
+                seen.add(token)
+                value = tokens.pop(0)
+                if token == "-l":
+                    if value.lower() not in {"stable", "lazer"}:
+                        raise ValueError("客户端使用 -l stable 或 -l lazer。")
+                    legacy = value.lower() == "stable"
+                else:
+                    items = value.upper().split(',')
+                    if any(not re.fullmatch(r"[A-Z0-9]{2,4}", x) for x in items) or "NM" in items and len(items) != 1:
+                        raise ValueError("Mods 使用逗号分隔缩写，NM 必须单独使用。")
+                    mods = ','.join(dict.fromkeys(items))
+            elif token.startswith('-'):
+                raise ValueError("对比只支持 -m 和 -l。")
+            else:
+                names.append(token)
+        if (target and names) or (not target and not 1 <= len(names) <= 2) or any(not x.strip() or len(x) > 128 for x in names):
+            raise ValueError("使用 /compare @用户 谱面ID，或 /compare 谱面ID 用户名 [另一用户名]；空格用户名加引号。")
+        return Command(name, mode, beatmap_id=map_id, target_uid=target, usernames=tuple(names), mods=mods, legacy_only=legacy)
     if name == "oa":
         names = shlex.split(tail)
         if target and names:
