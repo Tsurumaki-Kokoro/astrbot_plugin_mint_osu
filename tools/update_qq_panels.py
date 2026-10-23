@@ -6,7 +6,10 @@ from pathlib import Path
 import tempfile
 from urllib.parse import urlencode, quote
 
-from update_qq_menu import request_json, menu_matches
+if __package__:
+    from .update_qq_menu import request_json, menu_matches
+else:
+    from update_qq_menu import request_json, menu_matches
 
 PAYLOAD_PATH = Path(__file__).resolve().parents[1] / "qq_panel.json"
 BASE = "https://api.sgroup.qq.com/v2/panels"
@@ -54,9 +57,10 @@ def list_panels(scope, headers):
         seen.add(cursor)
 
 
-def publish(config_path, platform_id, panel):
+def publish(config_path, platform_id, panel, *, config=None, backup_dir=None, report=print):
     validate_panel(panel)
-    config = json.loads(Path(config_path).read_text(encoding="utf-8-sig"))
+    if config is None:
+        config = json.loads(Path(config_path).read_text(encoding="utf-8-sig"))
     platforms = [p for p in config.get("platform", []) if p.get("enable")
                  and p.get("type") == "qq_official"
                  and (platform_id is None or p.get("id") == platform_id)]
@@ -77,12 +81,12 @@ def publish(config_path, platform_id, panel):
             if len(matches) != 1:
                 raise ValueError(f"{scope} 存在多个全局面板，无法确定更新对象。")
         targets[scope] = matches[0] if matches else None
-    backup_dir = Path(config_path).resolve().parent / "temp"
-    backup_dir.mkdir(exist_ok=True)
+    backup_dir = Path(backup_dir) if backup_dir is not None else Path(config_path).resolve().parent / "temp"
+    backup_dir.mkdir(parents=True, exist_ok=True)
     fd, name = tempfile.mkstemp(prefix="qq-panels-backup-", suffix=".json", dir=backup_dir)
     with os.fdopen(fd, "w") as stream:
         json.dump(previous, stream, ensure_ascii=False, indent=2)
-    print(f"旧面板已备份：{name}")
+    report(f"旧面板已备份：{name}")
     for scope, target in targets.items():
         if target:
             panel_id = target["panel_id"]
@@ -91,12 +95,12 @@ def publish(config_path, platform_id, panel):
             result = request_json("POST", BASE, {"scope": scope, "target_type": "all", "panel": panel}, headers)
             panel_id = result["panel_id"]
         # Report successful writes before verification so partial success is visible.
-        print(f"{scope} 面板已提交：{panel_id}")
+        report(f"{scope} 面板已提交：{panel_id}")
         records = list_panels(scope, headers)
         current = next((r for r in records if r["panel_id"] == panel_id), None)
         if current is None or not panel_matches(current.get("panel"), panel):
             raise RuntimeError(f"{scope} 面板读取核验失败；请检查已提交面板。")
-        print(f"{scope} 面板核验通过，版本 {current.get('version', '未知')}")
+        report(f"{scope} 面板核验通过，版本 {current.get('version', '未知')}")
 
 
 def main():

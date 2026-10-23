@@ -11,6 +11,8 @@
 - `theme`：`default` 或 `yaowan`；BP 列表与谱面使用 `default`。
 - `request_timeout`：超时秒数，默认 90。
 - `max_concurrency`：同时请求上限，默认 2。
+- `subscription_poll_interval`：比赛订阅检查间隔，默认 30 秒。
+- `subscription_max_per_session`：每会话比赛订阅上限，默认 3 场。
 
 保存后重载插件。容器里的 localhost 指向容器自身，请使用 AstrBot 能访问的 MintAPI 地址。
 需要包含本轮 `/user_info` 直接用户名查询改动的 MintAPI；旧版本会要求调用者先绑定。
@@ -108,7 +110,7 @@ python3 tools/update_qq_menu.py --config /path/to/AstrBot/data/cmd_config.json
 
 ## QQ 官方机器人指令面板
 
-由于面板上限，未展示的 9 条命令为 `/stat`、`/unbind`、`/beatmapset`、`/search`、`/preview`、`/bpm`、`/cover`、`/mp`、`/rating`，均可手动输入或通过 `/minthelp` 查看。测试核对全部 29 条命令必须属于面板已展示或明确列出的未展示名单。
+由于面板上限，未展示的查询命令为 `/stat`、`/unbind`、`/beatmapset`、`/search`、`/preview`、`/bpm`、`/cover`、`/mp`、`/rating`，均可手动输入或通过 `/minthelp` 查看。管理员指令 `/mintmenu`、`/mintpanel` 不占面板位置。
 
 `qq_panel.json` 包含 20 条常用指令；QQ 面板上限为 20 条，完整命令见 /minthelp。面板的 `name` 就是点击后填入输入框的指令，`desc` 展示参数提示；无需参数的指令可直接发送，其他指令需补全用户名、谱面 ID 或模式。
 
@@ -147,9 +149,18 @@ python3 tools/update_qq_panels.py --config /path/to/AstrBot/data/cmd_config.json
 
 - `/mpwatch 比赛ID或链接`：订阅当前会话；`/mpwatch list`：查看当前会话订阅。
 - `/mpwatch stop 比赛ID或链接`、`/mpwatch stopall`：停止指定或全部订阅。群内修改需要群主、群管理员或机器人管理员权限；私聊管理自己的订阅。查看列表不要求管理员权限。
-- 每个会话最多 3 场，重复订阅不会创建新记录。每轮检查完成后等待 30 秒，同一比赛共享查询，同一单局共享图片；MintAPI 上游刷新频率由其 MatchLive 配置决定。
+- 每个会话默认最多 3 场（可配置），重复订阅不会创建新记录。每轮检查完成后默认等待 30 秒（可配置），同一比赛共享查询，同一单局共享图片；MintAPI 上游刷新频率由其 MatchLive 配置决定。
 - 仅推送订阅后结束且有成绩的单局图片，以及比赛关闭通知。玩家进出、选图、开局、中止的空成绩局不推送。比赛结束后自动停止，不自动生成评分；使用 `/rating` 查询。
 - SQLite 保存会话、单局推送进度、远端订阅 ID 与游标，位于 AstrBot 插件数据目录 `subscriptions.sqlite3`。重启恢复；失败保留订阅并重试，远端租期或游标过期后重新订阅，通过完整的已结束单局名单补发遗漏。停止最后一个本地订阅后取消远端订阅；取消请求失败会在后台重试。
 - 消息成功发送后才保存单局进度。正常轮询和恢复不会重复推送；若进程恰好在平台收件后、保存进度前退出，平台没有幂等发送接口时可能重复一条通知。
 - 必须更新到提供 `snapshot.games` 的 MintAPI，复用 `/multiplayer/live/subscriptions`、增量更新和单局图片接口。实时 JSON 响应最多 8 MiB，错误响应仍限制 64 KiB。
 - 当前 AstrBot QQ 官方适配器不支持会话主动推送，因此拒绝新建订阅；QQ OneBot 使用通用会话推送。其他平台需支持 AstrBot 的主动消息接口及群管理员查询。真实群消息发送仍需实机验证。
+
+
+### QQ 管理员一键同步
+
+AstrBot 机器人管理员在目标 QQ 官方机器人的私聊中发送 `/mintmenu` 更新私聊底部菜单，发送 `/mintpanel` 更新私聊和群聊指令面板。仅支持 QQ 官方适配器，群聊、OneBot 和其他平台不能执行。自动使用当前机器人的凭证，不需要额外配置机器人 ID。管理指令不占用公开菜单或面板位置。
+
+更新前备份到插件数据目录的 `qq_backups/`，更新后读取核验并回复结果；部分成功时会列出已完成的操作。重复执行会被阻止到本次更新结束。原有 tools 命令行入口仍可使用。
+
+后台新增 `subscription_poll_interval`（默认 30，范围 10～3600 秒）和 `subscription_max_per_session`（默认 3，范围 1～20 场）。保存配置并重载插件后生效；降低上限保留已有订阅。QQ 官方适配器仍不支持比赛订阅主动推送，QQ OneBot 可使用。

@@ -31,7 +31,7 @@ class QQPanelTests(unittest.TestCase):
         panel = json.loads(panels.PAYLOAD_PATH.read_text())
         shown = {item['name'][1:] for item in panel['items']}
         all_commands = set(arguments.COMMAND_PATTERN.pattern.split('(', 1)[1].split(')', 1)[0].split('|'))
-        omitted = {'stat', 'unbind', 'beatmapset', 'search', 'preview', 'bpm', 'cover', 'mp', 'rating'}
+        omitted = {'stat', 'unbind', 'beatmapset', 'search', 'preview', 'bpm', 'cover', 'mp', 'rating', 'mintmenu', 'mintpanel'}
         self.assertEqual(shown | omitted, all_commands)
         self.assertFalse(shown & omitted)
         self.assertIn('minthelp', shown)

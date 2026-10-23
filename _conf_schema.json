@@ -16,7 +16,10 @@
     "description": "资料卡与单条成绩主题",
     "type": "string",
     "default": "default",
-    "options": ["default", "yaowan"]
+    "options": [
+      "default",
+      "yaowan"
+    ]
   },
   "request_timeout": {
     "description": "请求超时（秒）",
@@ -29,5 +32,17 @@
     "type": "int",
     "default": 2,
     "hint": "1～10；用于限制同时发起的图片渲染请求。"
+  },
+  "subscription_poll_interval": {
+    "description": "比赛订阅检查间隔（秒）",
+    "type": "int",
+    "default": 30,
+    "hint": "10～3600 秒；每轮检查完成后等待的时间。"
+  },
+  "subscription_max_per_session": {
+    "description": "每会话比赛订阅上限",
+    "type": "int",
+    "default": 3,
+    "hint": "1～20 场；降低上限不会删除已有订阅。"
   }
 }

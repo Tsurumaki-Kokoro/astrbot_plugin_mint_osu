@@ -5,7 +5,7 @@ import shlex
 from urllib.parse import urlsplit
 from dataclasses import dataclass
 
-COMMAND_PATTERN = re.compile(r"^/?(statme|stat|pr|recent|bp|beatmapset|beatmap|bind|unbind|mode|minthelp|nb|fix|analyze|history|scorehistory|score|search|preview|bpm|cover|mp|rating|oa|pp|previewv|rank|top5|mpwatch)(?=\s|:|#|$)", re.I)
+COMMAND_PATTERN = re.compile(r"^/?(statme|stat|pr|recent|bp|beatmapset|beatmap|bind|unbind|mode|minthelp|nb|fix|analyze|history|scorehistory|score|search|preview|bpm|cover|mp|rating|oa|pp|previewv|rank|top5|mpwatch|mintmenu|mintpanel)(?=\s|:|#|$)", re.I)
 MODE_NAMES = {"osu": 0, "std": 0, "standard": 0, "taiko": 1, "catch": 2, "ctb": 2, "fruits": 2, "mania": 3}
 
 
@@ -46,6 +46,10 @@ def parse_command(text: str, mentions: list[str]) -> Command:
     target = mentions[0] if mentions else None
     if target and name not in {"stat", "pr", "recent", "bp", "nb", "fix", "analyze", "history", "score", "scorehistory", "oa", "pp"}:
         raise ValueError("这个命令不支持 @用户。")
+    if name in {"mintmenu", "mintpanel"}:
+        if tail:
+            raise ValueError("管理指令不接受参数。")
+        return Command(name)
     if name == "mpwatch":
         tokens = shlex.split(tail)
         if tokens == ["list"] or tokens == ["stopall"]:

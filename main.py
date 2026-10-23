@@ -1,6 +1,8 @@
 """AstrBot message entry point for MintAPI."""
 import asyncio
 import re
+import json
+from .tools import update_qq_menu, update_qq_panels
 
 import aiohttp
 from astrbot.api import AstrBotConfig, logger
@@ -41,7 +43,7 @@ HELP = """Mint osu! 命令：
 /mp 比赛ID或链接 [-p 2] [-t team-vs]：比赛历史
 /rating 比赛ID或链接 [-a bathbot] [-p 2]：比赛评分
 /mpwatch 比赛ID或链接：订阅比赛；list：列表；stop 比赛ID或链接、stopall：停止
-订阅每会话最多 3 场，每 30 秒检查；群内修改需要管理员权限
+订阅上限与检查间隔由插件配置决定；群内修改需要管理员权限
 评分算法：osuplus（默认）、bathbot、flashlight；支持 -t
 /bind 用户名、/unbind：绑定与解绑
 /mode 0～3：默认模式
@@ -119,6 +121,7 @@ class MintOsuPlugin(Star):
         self.config = config
         self._client: MintClient | None = None
         self._watch: Subscriptions | None = None
+        self._qq_publish_lock = asyncio.Lock()
 
     async def initialize(self):
         # Leave help usable when an administrator has not configured the API yet.
@@ -131,7 +134,9 @@ class MintOsuPlugin(Star):
     def _subscriptions(self):
         if self._watch is None:
             path = StarTools.get_data_dir("astrbot_plugin_mint_osu") / "subscriptions.sqlite3"
-            self._watch = Subscriptions(path, self._client, self.context.send_message)
+            self._watch = Subscriptions(path, self._client, self.context.send_message,
+                self.config.get("subscription_poll_interval", 30),
+                self.config.get("subscription_max_per_session", 3))
         self._watch.client = self._client
         return self._watch
 
@@ -145,8 +150,14 @@ class MintOsuPlugin(Star):
         command = None
         try:
             command = parse_command(command_text(event), mentioned_users(event))
+            if command.name in {"mintmenu", "mintpanel"}:
+                yield event.plain_result(await self._publish_qq(command.name, event))
+                return
             if command.name == "minthelp":
-                yield event.plain_result(HELP)
+                help_text = HELP
+                if event.get_platform_name().lower() == "qq_official" and event.is_private_chat() and event.is_admin():
+                    help_text += "\n管理员：/mintmenu 同步私聊菜单；/mintpanel 同步私聊和群聊指令面板。"
+                yield event.plain_result(help_text)
                 return
             if command.name == "mpwatch":
                 if command.action == "subscribe" and self._client is None:
@@ -215,6 +226,40 @@ class MintOsuPlugin(Star):
             yield event.plain_result("命令处理失败，请管理员检查插件日志。")
         finally:
             event.stop_event()
+
+    async def _publish_qq(self, name, event):
+        if event.get_platform_name().lower() != "qq_official" or not event.is_private_chat():
+            raise ValueError("此指令仅限 QQ 官方机器人私聊使用。")
+        if not event.is_admin():
+            raise ValueError("只有 AstrBot 机器人管理员可以更新 QQ 菜单和指令面板。")
+        if self._qq_publish_lock.locked():
+            raise ValueError("QQ 菜单或面板正在更新，请等待完成。")
+        platform_id = event.get_platform_id()
+        platform = self.context.get_platform_inst(platform_id)
+        if platform is None:
+            raise ValueError("无法找到当前 QQ 机器人，请检查适配器状态。")
+        config = {"platform": [dict(platform.config)]}
+        publisher = update_qq_menu if name == "mintmenu" else update_qq_panels
+        payload = json.loads(publisher.PAYLOAD_PATH.read_text(encoding="utf-8"))
+        backup_dir = StarTools.get_data_dir("astrbot_plugin_mint_osu") / "qq_backups"
+        reports = []
+        async with self._qq_publish_lock:
+            # Keep synchronous QQ requests off the message/event loop.
+            worker = asyncio.create_task(asyncio.to_thread(publisher.publish, None, platform_id, payload,
+                config=config, backup_dir=backup_dir, report=reports.append))
+            try:
+                await asyncio.shield(worker)
+            except asyncio.CancelledError:
+                # A cancelled handler must not unlock while its worker is still writing.
+                try:
+                    await worker
+                finally:
+                    raise
+            except Exception as exc:
+                logger.error(f"Mint QQ publish failed: {type(exc).__name__}")
+                detail = str(exc) if isinstance(exc, (ValueError, RuntimeError)) else "更新失败，请检查插件日志。"
+                return "\n".join(reports + [detail])
+        return "\n".join(reports)
 
     async def terminate(self):
         if self._watch is not None:

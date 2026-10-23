@@ -449,6 +449,69 @@ class HttpTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn("只查询最近一条", results[0].chain[0].text)
         self.assertEqual(self.requests, [])
 
+class QQAdminTests(unittest.IsolatedAsyncioTestCase):
+    async def test_guards_do_not_publish(self):
+        from unittest.mock import patch
+        plugin = main.MintOsuPlugin(SimpleNamespace(), {})
+        for adapter, group, admin in [('aiocqhttp', False, True), ('discord', False, True),
+                                      ('qq_official', True, True), ('qq_official', False, False)]:
+            event = event_for([Plain('/mintmenu')], adapter=adapter, group=group)
+            event.is_admin = lambda: admin
+            with patch.object(main.update_qq_menu, 'publish') as publish:
+                self.assertTrue(main.MintCommandFilter().filter(event, {}))
+                results = [x async for x in plugin.handle_command(event)]
+                self.assertTrue(results[0].chain[0].text)
+                publish.assert_not_called()
+
+    async def test_publish_targets_current_adapter_without_mintapi(self):
+        from unittest.mock import patch
+        context = SimpleNamespace(get_platform_inst=lambda pid: SimpleNamespace(config={
+            'id': pid, 'type': 'qq_official', 'enable': True, 'appid': '123', 'secret': 'test'}))
+        plugin = main.MintOsuPlugin(context, {})
+        for name, publisher in [('mintmenu', main.update_qq_menu), ('mintpanel', main.update_qq_panels)]:
+            event = event_for([Plain('/' + name)], adapter='qq_official', group=False)
+            event.is_admin = lambda: True
+            def publish(*args, **kwargs):
+                self.assertEqual(args[1], 'adapter-1')
+                self.assertEqual(kwargs['config']['platform'][0]['id'], 'adapter-1')
+                kwargs['report']('核验通过')
+            with patch.object(publisher, 'publish', side_effect=publish):
+                results = [x async for x in plugin.handle_command(event)]
+                self.assertEqual(results[0].chain[0].text, '核验通过')
+        self.assertIsNone(plugin._client)
+
+    async def test_partial_failure_and_busy(self):
+        from unittest.mock import patch
+        plugin = main.MintOsuPlugin(SimpleNamespace(get_platform_inst=lambda pid: SimpleNamespace(config={})), {})
+        event = event_for([Plain('/mintpanel')], adapter='qq_official', group=False)
+        event.is_admin = lambda: True
+        def publish(*args, **kwargs):
+            kwargs['report']('c2c 面板已提交')
+            raise RuntimeError('group 面板读取核验失败')
+        with patch.object(main.update_qq_panels, 'publish', side_effect=publish):
+            results = [x async for x in plugin.handle_command(event)]
+            self.assertIn('c2c 面板已提交', results[0].chain[0].text)
+            self.assertIn('group 面板读取核验失败', results[0].chain[0].text)
+        async with plugin._qq_publish_lock:
+            with self.assertRaisesRegex(ValueError, '正在更新'):
+                await plugin._publish_qq('mintpanel', event)
+
+    def test_admin_commands_reject_parameters(self):
+        for text in ['/mintmenu x', '/mintpanel:3']:
+            with self.assertRaises(ValueError):
+                arguments.parse_command(text, [])
+
+    def test_subscription_config_validation(self):
+        import tempfile
+        from pathlib import Path
+        for interval, limit in [(9, 3), (30, 0), (3601, 3), (30, 21)]:
+            with self.assertRaises(ValueError):
+                main.Subscriptions('/unused', None, None, interval, limit)
+        with tempfile.TemporaryDirectory() as folder:
+            watch = main.Subscriptions(Path(folder) / 'test.db', None, None, 60, 5)
+            self.assertEqual((watch.poll_interval, watch.max_per_session), (60, 5))
+            watch.db.close()
+
 
 if __name__ == "__main__":
     unittest.main()

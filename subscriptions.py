@@ -42,7 +42,12 @@ async def require_permission(event):
 
 
 class Subscriptions:
-    def __init__(self, path, client, send):
+    def __init__(self, path, client, send, poll_interval=30, max_per_session=3):
+        if type(poll_interval) is not int or not 10 <= poll_interval <= 3600:
+            raise ValueError("订阅检查间隔必须为 10～3600 秒。")
+        if type(max_per_session) is not int or not 1 <= max_per_session <= 20:
+            raise ValueError("每会话订阅上限必须为 1～20 场。")
+        self.poll_interval, self.max_per_session = poll_interval, max_per_session
         Path(path).parent.mkdir(parents=True, exist_ok=True)
         self.db = sqlite3.connect(path)
         self.db.execute('CREATE TABLE IF NOT EXISTS subscriptions (session TEXT, match_id INTEGER, title TEXT, seen TEXT, PRIMARY KEY(session,match_id))')
@@ -67,7 +72,7 @@ class Subscriptions:
                 raise
             except Exception as exc:
                 logger.error(f'Mint subscription polling failed: {type(exc).__name__}')
-            await asyncio.sleep(30)
+            await asyncio.sleep(self.poll_interval)
 
     async def state(self, match_id):
         remote = self.db.execute('SELECT subscription_id,cursor FROM remotes WHERE match_id=?', (match_id,)).fetchone()
@@ -132,8 +137,8 @@ class Subscriptions:
                 raise ValueError('当前 AstrBot QQ 官方适配器不支持会话主动推送，暂不支持比赛订阅。QQ OneBot 可使用此功能。')
             if any(mid == command.match_id for mid, _ in rows):
                 return '当前会话已经订阅这场比赛。'
-            if len(rows) >= 3:
-                raise ValueError('每个会话最多订阅 3 场比赛，请先停止已有订阅。')
+            if len(rows) >= self.max_per_session:
+                raise ValueError(f'每个会话最多订阅 {self.max_per_session} 场比赛，请先停止已有订阅。')
             state = await self.state(command.match_id)
             if state['closed']:
                 await self.cleanup_remotes()
@@ -141,7 +146,7 @@ class Subscriptions:
             seen = [game['game_id'] for game in state['games']]
             self.db.execute('INSERT INTO subscriptions VALUES (?,?,?,?)', (session, command.match_id, state['name'], json.dumps(seen)))
             self.db.commit()
-            return f"已订阅 {state['name']}（{command.match_id}），比赛进行中。每 30 秒检查，仅通知后续单局成绩和比赛结束。"
+            return f"已订阅 {state['name']}（{command.match_id}），比赛进行中。每 {self.poll_interval} 秒检查，仅通知后续单局成绩和比赛结束。"
 
     async def tick(self):
         async with self.lock:
