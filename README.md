@@ -1,3 +1,5 @@
+![AstrBot Mint osu!](banner.png)
+
 # Mint osu!
 
 AstrBot 的 osu! 查询插件，提供玩家资料、成绩、谱面预览、比赛查询与群订阅。需要可访问的 [MintAPI](https://github.com/Tsurumaki-Kokoro/MintAPI) 服务。
