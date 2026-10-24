@@ -10,7 +10,7 @@
     "type": "string",
     "secret": true,
     "default": "",
-    "hint": "与 MintAPI 的 ApiKey 一致，通过 access_token 请求头发送。"
+    "hint": "填写 MintAPI 配置中的 ApiKey。"
   },
   "theme": {
     "description": "资料卡与单条成绩主题",
@@ -31,7 +31,7 @@
     "description": "同时请求数量",
     "type": "int",
     "default": 2,
-    "hint": "1～10；用于限制同时发起的图片渲染请求。"
+    "hint": "1～10；请求较慢或服务繁忙时可适当降低。"
   },
   "subscription_poll_interval": {
     "description": "比赛订阅检查间隔（秒）",
@@ -49,7 +49,7 @@
     "description": "玩家动态订阅检查间隔（秒）",
     "type": "int",
     "default": 30,
-    "hint": "10～3600 秒；读取 MintAPI 事件，官方数据采集频率由 MintAPI 决定。"
+    "hint": "10～3600 秒；缩短此间隔不会提高 MintAPI 的官方数据采集频率。"
   },
   "player_subscription_max_per_group": {
     "description": "每群玩家动态订阅上限",

@@ -1,4 +1,4 @@
-"""Create or update Mint command panels for QQ private and group chats."""
+"""更新 QQ 官方机器人的全局私聊与群聊指令面板；凭证从 AstrBot 配置读取。"""
 import argparse
 import json
 import os
@@ -105,8 +105,8 @@ def publish(config_path, platform_id, panel, *, config=None, backup_dir=None, re
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--config", required=True)
-    parser.add_argument("--platform-id")
+    parser.add_argument("--config", required=True, help="AstrBot 的 data/cmd_config.json 路径")
+    parser.add_argument("--platform-id", help="目标 QQ 官方适配器 ID；启用多个适配器时必填")
     args = parser.parse_args()
     try:
         publish(args.config, args.platform_id, json.loads(PAYLOAD_PATH.read_text()))

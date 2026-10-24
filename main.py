@@ -34,9 +34,9 @@ HELP = """Mint osu! 命令：
 /weekly [@用户] [-w YYYY-MM-DD][:模式]：个人周报，默认上一完整周
 /compare [@用户] 谱面ID [-m HD,HR] [-l stable]：与自己对比
 /compare 谱面ID 用户A 用户B：两名 osu! 玩家的同图成绩，空格名字加引号
-/bpwatch [用户名或@用户][:模式]：订阅本群玩家动态，省略查询自己
-/bpwatch list [-p 2]、stop [用户名或@用户][:模式]、stopall：群内查询和取消
-玩家订阅增删需要群管理员；省略模式时订阅 Standard，stop 默认取消玩家全部模式
+/bpwatch [用户名或@用户][:模式]：订阅本群玩家动态，省略玩家为自己
+/bpwatch list [-p 2]：本群订阅；/bpwatch stop [用户名或@用户][:模式]、/bpwatch stopall：取消
+玩家订阅增删需要群管理员或 AstrBot 管理员；省略模式时订阅 Standard，stop 默认取消玩家全部模式
 /fix [@用户]：BP 补 FC 分析
 /analyze [@用户]：BP 成绩分析
 /history [@用户] [#天数]：PP/排名趋势，默认 30 天
@@ -55,6 +55,8 @@ HELP = """Mint osu! 命令：
 评分算法：osuplus（默认）、bathbot、flashlight；支持 -t
 /bind 用户名、/unbind：绑定与解绑
 /mode 0～3：默认模式
+/minthelp：查看帮助
+QQ 官方适配器不支持比赛与玩家动态订阅主动推送
 资料卡和成绩命令末尾可加 :0～:3。
 0 osu! · 1 taiko · 2 catch · 3 mania
 例如 /statme:3、/bp 1-10:3、/nb #7:3"""
