@@ -9,6 +9,7 @@ from astrbot.api import AstrBotConfig, logger
 from astrbot.api.event import AstrMessageEvent, filter
 from astrbot.api.message_components import At, AtAll, Plain, Image, Video
 from astrbot.api.star import Context, Star, StarTools, register
+from astrbot.core.star.star import star_map
 
 from .arguments import COMMAND_PATTERN, parse_command
 from .identity import resolve_identity
@@ -116,12 +117,60 @@ def mentioned_users(event: AstrMessageEvent) -> list[str]:
     return list(dict.fromkeys(ids))
 
 
+def command_prefixes(config) -> list[str]:
+    prefixes = config.get("command_prefixes", ["/"])
+    if not isinstance(prefixes, list) or not prefixes or any(
+        not isinstance(prefix, str) or not prefix.strip() for prefix in prefixes
+    ):
+        raise ValueError("命令前缀必须是非空字符串列表，不能包含空前缀。")
+    return sorted(dict.fromkeys(prefixes), key=len, reverse=True)
+
+
+def command_hint(text: str, config) -> str:
+    prefix = command_prefixes(config)[0]
+    return re.sub(r"/([a-z]+)(?=[\s:#、：，；。/]|$)", lambda m: prefix + m[1], text)
+
+
+def normalized_command(event: AstrMessageEvent, config, framework_config) -> str | None:
+    text = command_text(event)
+    prefixes = command_prefixes(config)
+    for prefix in prefixes:
+        if text.startswith(prefix):
+            candidate = text[len(prefix):].strip()
+            # Strip exactly one prefix; a repeated prefix is not a command.
+            if candidate and not candidate.startswith("/") and COMMAND_PATTERN.match(candidate):
+                return candidate
+            return None
+    # QQ official native menus/panels keep their platform-defined slash syntax,
+    # including when following AstrBot wake is disabled.
+    if text.startswith("/"):
+        if event.get_platform_name().lower() == "qq_official" and COMMAND_PATTERN.match(text):
+            return text[1:]
+        return None
+    if not config.get("follow_astrbot_wake", True) or not event.is_at_or_wake_command:
+        return None
+    # Follow AstrBot's actual prefix order, and only remove a prefix when the
+    # framework's processed text confirms it was removed for this event.
+    original = event.message_obj.message_str.strip()
+    processed = event.message_str.strip()
+    for prefix in framework_config.get("wake_prefix", []):
+        if prefix and original.startswith(prefix) and original[len(prefix):].strip() == processed:
+            if text.startswith(prefix):
+                text = text[len(prefix):].strip()
+            break
+    if text.startswith("/"):
+        text = text[1:]
+    return text if COMMAND_PATTERN.match(text) else None
+
+
 class MintCommandFilter(filter.CustomFilter):
     def filter(self, event: AstrMessageEvent, cfg: AstrBotConfig) -> bool:
-        text = command_text(event)
-        # Explicit slash commands work in groups; bare commands require AstrBot
-        # to have woken the event, so ordinary conversation is left untouched.
-        return bool(COMMAND_PATTERN.match(text)) and (text.startswith("/") or event.is_at_or_wake_command)
+        metadata = star_map.get(__name__)
+        plugin = metadata.star_cls if metadata else None
+        config = plugin.config if plugin is not None else {}
+        text = normalized_command(event, config, cfg)
+        event.set_extra("mint_osu_command_text", text)
+        return text is not None
 
 
 @register("astrbot_plugin_mint_osu", "TRANCE", "通过 MintAPI 查询 osu! 资料、成绩与谱面", "1.0.0")
@@ -129,6 +178,7 @@ class MintOsuPlugin(Star):
     def __init__(self, context: Context, config: AstrBotConfig):
         super().__init__(context)
         self.config = config
+        command_prefixes(config)
         self._client: MintClient | None = None
         self._watch: Subscriptions | None = None
         self._player_watch: PlayerSubscriptions | None = None
@@ -170,7 +220,13 @@ class MintOsuPlugin(Star):
         """osu! 小薄绿：资料、成绩、BP 分析、历史、谱面与绑定命令；/minthelp 查看用法。"""
         command = None
         try:
-            command = parse_command(command_text(event), mentioned_users(event))
+            text = event.get_extra("mint_osu_command_text")
+            if text is None:
+                framework_config = self.context.get_config(event.unified_msg_origin) if hasattr(self.context, "get_config") else {}
+                text = normalized_command(event, self.config, framework_config)
+            if text is None:
+                return
+            command = parse_command(text, mentioned_users(event))
             if command.name in {"mintmenu", "mintpanel"}:
                 yield event.plain_result(await self._publish_qq(command.name, event))
                 return
@@ -182,7 +238,9 @@ class MintOsuPlugin(Star):
                     chain = [Image.fromBytes(poster)]
                 except (ValueError, MintAPIError, aiohttp.ClientError, asyncio.TimeoutError) as exc:
                     logger.warning(f"Mint help poster unavailable; using text help: {type(exc).__name__}")
-                    chain = [Plain(HELP)]
+                    chain = [Plain(command_hint(HELP, self.config))]
+                if command_prefixes(self.config) != ["/"] and isinstance(chain[0], Image):
+                    chain.append(Plain("海报使用默认 / 前缀；当前可用前缀：" + "、".join(command_prefixes(self.config)) + "\n" + command_hint(HELP, self.config)))
                 if event.get_platform_name().lower() == "qq_official" and event.is_private_chat() and event.is_admin():
                     chain.append(Plain("管理员：/mintmenu 同步私聊菜单；/mintpanel 同步私聊和群聊指令面板。"))
                 yield event.chain_result(chain)
@@ -249,9 +307,9 @@ class MintOsuPlugin(Star):
                 yield event.chain_result(chain)
             else:
                 message = {"bind": "绑定成功。可使用 /statme 查询资料卡。", "unbind": "已解除绑定。", "mode": "默认模式已更新。"}[command.name]
-                yield event.plain_result(message)
+                yield event.plain_result(command_hint(message, self.config))
         except ValueError as exc:
-            yield event.plain_result(str(exc))
+            yield event.plain_result(command_hint(str(exc), self.config))
         except MintAPIError as exc:
             logger.warning(f"MintAPI request failed: HTTP {exc.status}")
             yield event.plain_result(error_message(command, exc.status, exc.detail, exc.retry_after))

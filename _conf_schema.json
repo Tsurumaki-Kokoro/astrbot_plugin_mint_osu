@@ -1,4 +1,18 @@
 {
+  "command_prefixes": {
+    "description": "命令前缀列表",
+    "type": "list",
+    "default": [
+      "/"
+    ],
+    "hint": "例如 [\"/\", \"!\", \"！\"]。半角与全角分别配置；不能使用空前缀。前缀本身即可触发命令，无需额外唤醒。"
+  },
+  "follow_astrbot_wake": {
+    "description": "跟随 AstrBot 唤醒",
+    "type": "bool",
+    "default": true,
+    "hint": "经 AstrBot 唤醒词、@机器人或允许的私聊唤醒后，可直接使用 bp 等命令。"
+  },
   "api_base_url": {
     "description": "MintAPI 地址",
     "type": "string",

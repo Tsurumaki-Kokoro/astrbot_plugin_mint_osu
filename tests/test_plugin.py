@@ -49,6 +49,65 @@ def event_for(parts, adapter="aiocqhttp", raw=None, wake=False, group=True):
     return event
 
 
+class PrefixTests(unittest.TestCase):
+    def test_all_commands_accept_each_prefix_without_changing_arguments(self):
+        commands = arguments.COMMAND_PATTERN.pattern.split("(", 1)[1].split(")", 1)[0].split("|")
+        for name in commands:
+            for prefix in ["/", "!", "！", "osu "]:
+                text = prefix + name + ":3"
+                with self.subTest(text=text):
+                    self.assertEqual(main.normalized_command(event_for([Plain(text)]),
+                        {"command_prefixes": [prefix]}, {}), name + ":3")
+
+    def test_longest_prefix_and_disabled_slash_and_repeated_prefix(self):
+        config = {"command_prefixes": ["!", "!!", "！"]}
+        self.assertEqual(main.normalized_command(event_for([Plain("!!bp 1-10:3")]), config, {}), "bp 1-10:3")
+        for text in ["/bp", "!!!bp", "！/bp", "hello !bp", "!bp_extra", "bp"]:
+            with self.subTest(text=text):
+                self.assertIsNone(main.normalized_command(event_for([Plain(text)]), config, {}))
+        event = event_for([Plain("/bp")], wake=True)
+        event.message_str = "bp"
+        self.assertIsNone(main.normalized_command(event, config, {"wake_prefix": ["/"]}))
+
+    def test_framework_prefix_with_mentions_and_complex_arguments(self):
+        for tail in ["bp 1-10:3", "compare 123 \"名字 A\" \"名字 B\"", "search 小薄绿 remix -p 2", "nb#7:3", "/bp 2:3"]:
+            event = event_for([Plain("小薄绿 " + tail)], wake=True)
+            event.message_str = tail
+            original = event.message_str
+            normalized = main.normalized_command(event, {}, {"wake_prefix": ["小薄绿"]})
+            self.assertEqual(arguments.parse_command(normalized, []), arguments.parse_command(tail, []))
+            self.assertEqual(event.message_str, original)
+        event = event_for([At(qq="999"), Plain("小薄绿 bp "), At(qq="200"), Plain(" 1-10:3")], wake=True)
+        event.message_str = "bp  1-10:3"
+        text = main.normalized_command(event, {}, {"wake_prefix": ["小薄绿"]})
+        command = arguments.parse_command(text, main.mentioned_users(event))
+        self.assertEqual((command.target_uid, command.first, command.last, command.mode), ("200", 1, 10, 3))
+
+    def test_wake_toggle_and_empty_prefix_validation(self):
+        for parts in [[Plain("bp:3")], [At(qq="999"), Plain("bp:3")]]:
+            event = event_for(parts, wake=True)
+            self.assertEqual(main.normalized_command(event, {}, {}), "bp:3")
+            self.assertIsNone(main.normalized_command(event, {"follow_astrbot_wake": False}, {}))
+        for value in [[], [""], [" "], "/", [None]]:
+            with self.subTest(value=value), self.assertRaises(ValueError):
+                main.command_prefixes({"command_prefixes": value})
+
+    def test_official_native_commands_remain_available_with_custom_prefix(self):
+        config = {"command_prefixes": ["!"], "follow_astrbot_wake": False}
+        for name in ["statme", "mintmenu", "mintpanel"]:
+            event = event_for([Plain("/" + name)], adapter="qq_official")
+            self.assertEqual(main.normalized_command(event, config, {}), name)
+
+    def test_filter_uses_plugin_config_and_caches_for_execution(self):
+        from unittest.mock import patch
+        plugin = SimpleNamespace(config={"command_prefixes": ["！"]})
+        with patch.dict(main.star_map, {main.__name__: SimpleNamespace(star_cls=plugin)}):
+            event = event_for([Plain("！bp 2:3")])
+            self.assertTrue(main.MintCommandFilter().filter(event, {}))
+            self.assertEqual(event.get_extra("mint_osu_command_text"), "bp 2:3")
+            self.assertFalse(main.MintCommandFilter().filter(event_for([Plain("/bp")]), {}))
+
+
 class ParsingTests(unittest.TestCase):
     def test_short_options_reject_old_long_names_and_video_command(self):
         for text in ["/mp 123 --page 2", "/rating 123 --algorithm bathbot",
@@ -439,6 +498,25 @@ class HttpTests(unittest.IsolatedAsyncioTestCase):
         with self.assertRaises(client_module.MintAPIError) as caught:
             await self.client.request(request)
         self.assertEqual(caught.exception.status, 403)
+
+    async def test_custom_prefix_dispatch_and_help_keep_media(self):
+        plugin = main.MintOsuPlugin(SimpleNamespace(), {"command_prefixes": ["!", "！"]})
+        plugin._client = self.client
+        for prefix in ["!", "！"]:
+            event = event_for([Plain(prefix + "bp 2:3")])
+            from unittest.mock import patch
+            with patch.dict(main.star_map, {main.__name__: SimpleNamespace(star_cls=plugin)}):
+                self.assertTrue(main.MintCommandFilter().filter(event, {}))
+            results = [r async for r in plugin.handle_command(event)]
+            self.assertIsInstance(results[0].chain[0], Image)
+            self.assertEqual(self.requests[-1][2]["best_index"], "2")
+            self.assertEqual(self.requests[-1][2]["game_mode"], "3")
+        results = [r async for r in plugin.handle_command(event_for([Plain("!minthelp")]))]
+        self.assertIsInstance(results[0].chain[0], Image)
+        self.assertIn("!statme", results[0].chain[1].text)
+        self.status = 500
+        results = [r async for r in plugin.handle_command(event_for([Plain("!minthelp")]))]
+        self.assertIn("!statme", results[0].chain[0].text)
 
     async def test_help_returns_image_without_player_identity_or_theme(self):
         plugin = main.MintOsuPlugin(SimpleNamespace(), {"theme": "invalid"})

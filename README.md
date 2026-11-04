@@ -20,6 +20,8 @@ https://github.com/Tsurumaki-Kokoro/astrbot_plugin_mint_osu
 | --- | --- | --- |
 | `api_base_url` | `http://127.0.0.1:5251` | AstrBot 可访问的 MintAPI 地址；容器内 localhost 指向容器自身 |
 | `api_token` | 空 | 填写 MintAPI 的 `ApiKey` |
+| `command_prefixes` | `["/"]` | 命令前缀列表，例如 `["/", "!", "！"]`；全角和半角分别配置，不允许空前缀 |
+| `follow_astrbot_wake` | `true` | 经 AstrBot 唤醒后允许裸命令；私聊是否需要唤醒由 AstrBot 控制 |
 | `theme` | `default` | 资料卡与单条成绩主题，可选 `yaowan`；BP 列表、谱面与分析图使用默认主题 |
 | `request_timeout` | 90 | 请求超时，1～300 秒 |
 | `max_concurrency` | 2 | 同时请求上限，1～10 |
@@ -39,6 +41,12 @@ MintAPI 需支持以下接口或参数；升级插件时请同时核对服务端
 - 帮助海报：`GET /help/image`；不可用时 `/minthelp` 自动返回文字帮助。
 
 ## 命令
+
+下表使用默认 `/` 前缀。将插件配置 `command_prefixes` 设为 `["!", "！"]` 后，可用 `!statme`、`！statme`、`!bp 1-10:3`；原 `/` 入口关闭。多个前缀优先匹配最长项，前缀本身即可触发，无需叠加 AstrBot 唤醒词。
+
+默认开启 `follow_astrbot_wake`：例如 AstrBot 唤醒词为“小薄绿”，可发送“小薄绿 bp 1-10:3”或“小薄绿 /bp 1-10:3”，也可 @机器人后发送裸命令。普通群聊中的裸命令不会被接管；私聊遵循 AstrBot 的唤醒设置。关闭此选项后仅接受插件前缀。QQ 官方原生命令菜单和指令面板保留平台 `/` 调用方式。
+
+自定义前缀时，帮助海报仍保留，同时附上当前前缀的文字帮助；海报内的 `/` 为默认示例。
 
 短参数：`-p` 页码、`-c` 游标、`-m` Mods、`-f` 图片格式、`-s` 视频起点、`-d` 视频时长、`-a` 评分算法、`-t` 队伍类型、`-w` 周报起始日期、`-l` 成绩客户端。
 
