@@ -1,5 +1,5 @@
 name: astrbot_plugin_mint_osu
-display_name: Mint osu!
+display_name: osu! 小薄绿
 desc: 通过 MintAPI 查询 osu! 资料、成绩、谱面和比赛，支持周报、同图对比与群订阅。
 version: v1.0.0
 author: TRANCE

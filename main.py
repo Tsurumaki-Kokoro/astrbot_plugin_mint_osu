@@ -19,7 +19,7 @@ from .subscriptions import Subscriptions
 from .player_subscriptions import PlayerSubscriptions
 from .player_features import compare_scores
 
-HELP = """Mint osu! 命令：
+HELP = """osu! 小薄绿 命令：
 /oa：自己的名片；/oa @用户：单人名片；/oa 用户名列表：ZIP，空格用户名加引号
 /pp 增加PP [@用户]：增加 PP 所需成绩与 BP 位置
 /previewv 谱面ID [-m HD,DT] [-s preview] [-d 30]：视频
@@ -167,7 +167,7 @@ class MintOsuPlugin(Star):
 
     @filter.custom_filter(MintCommandFilter)
     async def handle_command(self, event: AstrMessageEvent):
-        """Mint osu!：资料、成绩、BP 分析、历史、谱面与绑定命令；/minthelp 查看用法。"""
+        """osu! 小薄绿：资料、成绩、BP 分析、历史、谱面与绑定命令；/minthelp 查看用法。"""
         command = None
         try:
             command = parse_command(command_text(event), mentioned_users(event))
@@ -259,7 +259,7 @@ class MintOsuPlugin(Star):
             yield event.plain_result("无法连接 MintAPI 或请求超时，请稍后重试。")
         except Exception as exc:
             # Do not log request URLs, payloads or exception text that may include secrets.
-            logger.error(f"Mint osu! command failed: {type(exc).__name__}")
+            logger.error(f"osu! 小薄绿 command failed: {type(exc).__name__}")
             yield event.plain_result("命令处理失败，请管理员检查插件日志。")
         finally:
             event.stop_event()
