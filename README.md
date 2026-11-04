@@ -6,6 +6,8 @@ AstrBot 的 osu! 查询插件，提供玩家资料、成绩、谱面预览、比
 
 ## 安装与配置
 
+需要 AstrBot **4.28.0 或更高版本**。声明支持 LLBot（通过 OneBot v11 / `aiocqhttp` 接入）、QQ 官方机器人（`qq_official`）和 Discord（`discord`）。
+
 在 AstrBot 插件管理中使用仓库地址安装：
 
 ```text

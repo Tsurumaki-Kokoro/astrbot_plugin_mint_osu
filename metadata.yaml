@@ -4,3 +4,16 @@ desc: 通过 MintAPI 查询 osu! 资料、成绩、谱面和比赛，支持周�
 version: v1.0.0
 author: TRANCE
 repo: https://github.com/Tsurumaki-Kokoro/astrbot_plugin_mint_osu
+short_desc: osu! 查分、玩家资料、谱面预览、周报与群订阅
+tags:
+  - osu
+  - osu!
+  - 查分
+  - 音游
+  - MintAPI
+astrbot_version: ">=4.28.0"
+support_platforms:
+  - aiocqhttp
+  - qq_official
+  - discord
+social_link: https://github.com/Tsurumaki-Kokoro
