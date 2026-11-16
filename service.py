@@ -39,6 +39,8 @@ def build_request(command: Command, caller: Identity, theme: str) -> Request:
         params = {"mp_id": command.match_id, "page": command.page, "theme": "default"}
         if command.team_type is not None:
             params["team_type"] = command.team_type
+        if command.trim is not None:
+            params["trim"] = command.trim
         if name == "rating":
             params["algorithm"] = command.algorithm
         return Request("GET", "/multiplayer/history" if name == "mp" else "/multiplayer/rating", params)

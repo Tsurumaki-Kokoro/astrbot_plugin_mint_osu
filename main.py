@@ -52,11 +52,13 @@ HELP = """osu! 小薄绿 命令：
 /bpm 谱面ID：BPM 时间轴
 /cover 谱面ID：谱面封面
 /beatmapset 谱面集ID：谱面集信息
-/mp 比赛ID或链接 [-p 2] [-t team-vs]：比赛历史
-/rating 比赛ID或链接 [-a bathbot] [-p 2]：比赛评分
+/mp 比赛ID或链接 [-p 2] [-t team-vs] [--trim 2,1]：比赛历史
+/rating 比赛ID或链接 [-a bathbot] [-p 2] [-t team-vs] [--trim 2,1]：比赛评分
+省略 -p 或用 -p 0 输出完整长图，使用 -p 1 等正数分页
+先用 -t 筛选队伍类型，再用 --trim 2,1 跳过开头两局和结尾一局
 /mpwatch 比赛ID或链接：订阅比赛；list：列表；stop 比赛ID或链接、stopall：停止
 订阅上限与检查间隔由插件配置决定；群内修改需要管理员权限
-评分算法：osuplus（默认）、bathbot、flashlight；支持 -t
+评分算法：osuplus（默认）、bathbot、flashlight
 /bind 用户名、/unbind：绑定与解绑
 /mode 0～3：默认模式
 /minthelp：查看帮助
@@ -131,7 +133,7 @@ def command_prefixes(config) -> list[str]:
 
 def command_hint(text: str, config) -> str:
     prefix = command_prefixes(config)[0]
-    return re.sub(r"/([a-z]+|猜歌提示|取消猜歌|猜歌|作答)(?=[\s:#、：，；。/]|$)", lambda m: prefix + m[1], text)
+    return re.sub(r"/([a-z][a-z0-9]*|猜歌提示|取消猜歌|猜歌|作答)(?=[\s:#、：，；。/]|$)", lambda m: prefix + m[1], text)
 
 
 def normalized_command(event: AstrMessageEvent, config, framework_config) -> str | None:
@@ -266,8 +268,10 @@ class MintOsuPlugin(Star):
                 except (ValueError, MintAPIError, aiohttp.ClientError, asyncio.TimeoutError) as exc:
                     logger.warning(f"Mint help poster unavailable; using text help: {type(exc).__name__}")
                     chain = [Plain(command_hint(HELP, self.config))]
-                if command_prefixes(self.config) != ["/"] and isinstance(chain[0], Image):
-                    chain.append(Plain("海报使用默认 / 前缀；当前可用前缀：" + "、".join(command_prefixes(self.config)) + "\n" + command_hint(HELP, self.config)))
+                else:
+                    prefixes = command_prefixes(self.config)
+                    if prefixes != ["/"]:
+                        chain.append(Plain("海报以 / 为例，当前可用以下任一前缀触发命令：" + "、".join(prefixes)))
                 if event.get_platform_name().lower() == "qq_official" and event.is_private_chat() and event.is_admin():
                     chain.append(Plain("管理员：/mintmenu 同步私聊菜单；/mintpanel 同步私聊和群聊指令面板。"))
                 if group_session(event):
@@ -321,9 +325,11 @@ class MintOsuPlugin(Star):
                 if command.name in {"mp", "rating"}:
                     headers = getattr(result, "headers", {})
                     if command.page == 0:
-                        notice = "全部已结束对局。"
+                        notice = "展示本次查询范围内的全部对局。" if command.name == "mp" else "展示全部有效玩家的评分。"
                     else:
                         notice = f"第 {headers.get('X-Page', str(command.page))}/{headers.get('X-Page-Count', '?')} 页；使用 -p 翻页，保留比赛及筛选条件。"
+                        if command.trim is not None:
+                            notice += f" 翻页时保留 --trim {command.trim}。"
                     chain.append(Plain(notice))
                 if command.name == "search":
                     headers = getattr(result, "headers", {})

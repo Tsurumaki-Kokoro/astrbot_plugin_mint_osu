@@ -34,6 +34,7 @@ class Command:
     action: str = "subscribe"
     week_start: str | None = None
     legacy_only: bool | None = None
+    trim: str | None = None
 
 
 def parse_command(text: str, mentions: list[str]) -> Command:
@@ -177,29 +178,33 @@ def parse_command(text: str, mentions: list[str]) -> Command:
         match_id = int(value)
         if not 1 <= match_id <= 2147483647:
             raise ValueError("比赛 ID 必须为正整数且不超过 2147483647。")
-        page, algorithm, team_type, seen = 1, "osuplus", None, set()
+        page, algorithm, team_type, trim, seen = 0, "osuplus", None, None, set()
         while tokens:
             flag = tokens.pop(0)
-            allowed = {"-p", "-t"} | ({"-a"} if name == "rating" else set())
+            allowed = {"-p", "-t", "--trim"} | ({"-a"} if name == "rating" else set())
             if flag not in allowed or flag in seen or not tokens:
-                raise ValueError("使用 -p 页码、-t 队伍类型；rating 还支持 -a 算法。")
+                raise ValueError("支持 -p 页码、-t 队伍类型和 --trim 开头局数,结尾局数。rating 也支持 -a 算法。")
             seen.add(flag)
             value = tokens.pop(0).lower()
             if flag == "-p":
-                minimum = 0 if name == "mp" else 1
-                if not re.fullmatch(r"[0-9]+", value) or not minimum <= int(value) <= 1000000:
-                    raise ValueError(f"页码必须为 {minimum}～1000000。")
+                if not re.fullmatch(r"[0-9]+", value) or not 0 <= int(value) <= 1000000:
+                    raise ValueError("页码必须为 0～1000000，0 表示不分页。")
                 page = int(value)
             elif flag == "-a":
                 if value not in {"osuplus", "bathbot", "flashlight"}:
                     raise ValueError("评分算法必须为 osuplus、bathbot 或 flashlight。")
                 algorithm = value
+            elif flag == "--trim":
+                counts = re.fullmatch(r"0*([0-9]{1,10}),0*([0-9]{1,10})", value)
+                if counts is None or any(int(count) > 2147483647 for count in counts.groups()):
+                    raise ValueError("--trim 需要两个逗号分隔的非负整数，例如 2,1。")
+                trim = value
             else:
                 types = {"head-to-head", "team-vs"} | ({"tag-coop", "tag-team-vs"} if name == "mp" else set())
                 if value not in types:
                     raise ValueError("评分仅支持 head-to-head、team-vs；比赛历史还支持 tag-coop、tag-team-vs。")
                 team_type = value
-        return Command(name, match_id=match_id, page=page, algorithm=algorithm, team_type=team_type)
+        return Command(name, match_id=match_id, page=page, algorithm=algorithm, team_type=team_type, trim=trim)
 
     mode = None
     if name in {"stat", "statme", "pr", "recent", "bp", "nb", "fix", "analyze", "history", "score", "scorehistory", "search", "rank"}:

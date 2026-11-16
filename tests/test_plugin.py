@@ -131,13 +131,14 @@ class ParsingTests(unittest.TestCase):
             self.assertEqual(request.params["algorithm"], algorithm)
             self.assertEqual(request.params["page"], 2)
         command = arguments.parse_command("/rating 123", [])
-        self.assertEqual((command.page, command.algorithm, command.team_type), (1, "osuplus", None))
+        self.assertEqual((command.page, command.algorithm, command.team_type), (0, "osuplus", None))
 
     def test_invalid_match_arguments(self):
         for text in ["/mp", "/mp 0", "/mp 2147483648", "/mp https://evil.test/mp/123", "/mp https://osu.ppy.sh/beatmaps/123",
                      "/mp https://osu.ppy.sh@evil.test/mp/123", "/mp 123 -a bathbot", "/mp 123 -p -1",
-                     "/mp 123 -p 1 -p 2", "/rating 123 -p 0", "/rating 123 -a unknown",
-                     "/rating 123 -t tag-coop", "/rating 123 -a", "/rating 123:3"]:
+                     "/mp 123 -p 1 -p 2", "/rating 123 -p -1", "/rating 123 -a unknown",
+                     "/mp 123 --trim 1", "/mp 123 --trim -1,0", "/mp 123 --trim 2147483648,0",
+                     "/rating 123 --trim 1,0 --trim 0,1", "/rating 123 -t tag-coop", "/rating 123 -a", "/rating 123:3"]:
             with self.subTest(text=text), self.assertRaises(ValueError):
                 arguments.parse_command(text, [])
         with self.assertRaises(ValueError):
@@ -343,19 +344,26 @@ class HttpTests(unittest.IsolatedAsyncioTestCase):
         plugin = main.MintOsuPlugin(SimpleNamespace(), {})
         plugin._client = self.client
         self.extra_headers = {"X-Page": "2", "X-Page-Count": "3"}
-        for text, path in [("/mp 123 -p 2", "/multiplayer/history"),
-                           ("/rating https://osu.ppy.sh/mp/123 -a bathbot -p 2", "/multiplayer/rating")]:
+        for text, path in [("/mp 123 -p 2 --trim 2,1", "/multiplayer/history"),
+                           ("/rating https://osu.ppy.sh/mp/123 -a bathbot -p 2 --trim 2,1", "/multiplayer/rating")]:
             event = event_for([Plain(text)])
             self.assertTrue(main.MintCommandFilter().filter(event, {}))
             results = [result async for result in plugin.handle_command(event)]
             self.assertIsInstance(results[0].chain[0], Image)
             self.assertIn("2/3", results[0].chain[1].text)
+            self.assertIn("--trim 2,1", results[0].chain[1].text)
+            self.assertEqual(self.requests[-1][2]["trim"], "2,1")
             self.assertEqual(self.requests[-1][1], path)
             self.assertEqual(self.requests[-1][2]["mp_id"], "123")
             self.assertNotIn("platform_uid", self.requests[-1][2])
         self.assertEqual(self.requests[-1][2]["algorithm"], "bathbot")
-        results = [result async for result in plugin.handle_command(event_for([Plain("/mp 123 -p 0")]))]
-        self.assertIn("全部", results[0].chain[1].text)
+        for name in ("mp", "rating"):
+            for page_option in ("", " -p 0"):
+                event = event_for([Plain(f"/{name} 123{page_option}")])
+                results = [result async for result in plugin.handle_command(event)]
+                self.assertIsInstance(results[0].chain[0], Image)
+                self.assertIn("全部", results[0].chain[1].text)
+                self.assertEqual(self.requests[-1][2]["page"], "0")
 
     async def test_all_extended_commands_send_images_for_mentioned_user(self):
         plugin = main.MintOsuPlugin(SimpleNamespace(), {"theme": "yaowan"})
@@ -500,7 +508,7 @@ class HttpTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(caught.exception.status, 403)
 
     async def test_custom_prefix_dispatch_and_help_keep_media(self):
-        plugin = main.MintOsuPlugin(SimpleNamespace(), {"command_prefixes": ["!", "！"]})
+        plugin = main.MintOsuPlugin(SimpleNamespace(), {"command_prefixes": ["!", "！", "/"]})
         plugin._client = self.client
         for prefix in ["!", "！"]:
             event = event_for([Plain(prefix + "bp 2:3")])
@@ -513,10 +521,13 @@ class HttpTests(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(self.requests[-1][2]["game_mode"], "3")
         results = [r async for r in plugin.handle_command(event_for([Plain("!minthelp")]))]
         self.assertIsInstance(results[0].chain[0], Image)
-        self.assertIn("!statme", results[0].chain[1].text)
+        self.assertEqual(len(results[0].chain), 2)
+        self.assertEqual(results[0].chain[1].text, "海报以 / 为例，当前可用以下任一前缀触发命令：!、！、/")
         self.status = 500
         results = [r async for r in plugin.handle_command(event_for([Plain("!minthelp")]))]
+        self.assertEqual(len(results[0].chain), 1)
         self.assertIn("!statme", results[0].chain[0].text)
+        self.assertIn("!rank:3、!top5：", results[0].chain[0].text)
 
     async def test_help_returns_image_without_player_identity_or_theme(self):
         plugin = main.MintOsuPlugin(SimpleNamespace(), {"theme": "invalid"})
