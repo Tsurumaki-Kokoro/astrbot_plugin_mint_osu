@@ -21,7 +21,7 @@ from .player_subscriptions import PlayerSubscriptions
 from .player_features import compare_scores
 from .song_guess import COMMANDS as SONG_GUESS_COMMANDS, SongGuess, group_session
 
-SONG_GUESS_HELP = "群内音频猜歌：/猜歌 [:模式]、/猜歌提示、/作答 歌名、/取消猜歌"
+SONG_GUESS_HELP = "群内猜歌：/猜歌 [:模式]、/谱面猜歌 [:模式]、/猜歌提示、/作答 歌名、/取消猜歌"
 
 HELP = """osu! 小薄绿 命令：
 /oa：自己的名片；/oa @用户：单人名片；/oa 用户名列表：ZIP，空格用户名加引号

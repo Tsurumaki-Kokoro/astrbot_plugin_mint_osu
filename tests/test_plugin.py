@@ -550,7 +550,7 @@ class HttpTests(unittest.IsolatedAsyncioTestCase):
         self.status = 500
         results = [r async for r in plugin.handle_command(event)]
         self.assertEqual(len(results[0].chain), 1)
-        for command in ("!猜歌 ", "!猜歌提示", "!作答 ", "!取消猜歌"):
+        for command in ("!猜歌 ", "!谱面猜歌 ", "!猜歌提示", "!作答 ", "!取消猜歌"):
             self.assertIn(command, results[0].chain[0].text)
 
     async def test_help_failure_falls_back_to_text_and_keeps_admin_hint(self):
