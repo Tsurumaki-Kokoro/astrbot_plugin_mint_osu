@@ -1,4 +1,4 @@
-"""Run one audio guessing round per OneBot group."""
+"""Run one song guessing round per OneBot group."""
 import asyncio
 import base64
 from dataclasses import dataclass, field
@@ -11,16 +11,17 @@ import unicodedata
 import aiohttp
 from astrbot.api import logger
 from astrbot.api.event import MessageChain
-from astrbot.api.message_components import Plain, Record
+from astrbot.api.message_components import Image, Plain, Record
 from astrbot.core.platform.message_session import MessageSession
 
 from .extras import bound_group_members
 from .mint_client import MintAPIError
 from .service import Request
 
-COMMANDS = {"猜歌", "猜歌提示", "取消猜歌", "作答"}
+COMMANDS = {"猜歌", "谱面猜歌", "猜歌提示", "取消猜歌", "作答"}
 ONEBOT = {"aiocqhttp", "onebot", "onebot_v11", "qq"}
 ROUND_SECONDS = 300
+PREVIEW_MODES = ("standard", "taiko", "ctb", "mania")
 TITLE_PUNCTUATION = str.maketrans("‘’“”‐‑–—", "''\"\"----")
 EDGE_PUNCTUATION = " !?。.…"
 VERSION_WORDS = {"mix", "remix", "edit", "ver", "version"}
@@ -139,7 +140,7 @@ class SongGuess:
             self.history_day = today
         return self.history.setdefault(session, set())
 
-    async def pick(self, client, caller, event, session, mode):
+    async def pick(self, client, caller, event, session, mode, chart):
         members = await bound_group_members(client, caller, event, "猜歌")
         if not members:
             raise ValueError("本群还没有绑定 osu! 账号的玩家。")
@@ -163,44 +164,56 @@ class SongGuess:
                 for item in result["beatmapsets"]:
                     song = Song(item["id"], item["title"] or "", item["titleUnicode"] or "",
                                 item["artist"] or "", item["artistUnicode"] or "")
-                    if song.id not in seen and song.answers:
-                        songs.setdefault(song.id, song)
+                    if song.id in seen or not song.answers:
+                        continue
+                    beatmap_id, native_mode = item.get("beatmapId"), item.get("beatmapMode")
+                    if chart and (type(beatmap_id) is not int or beatmap_id <= 0 or native_mode not in range(4)):
+                        continue
+                    songs.setdefault(song.id, (song, beatmap_id, native_mode))
                 candidates = list(songs.values())
                 random.shuffle(candidates)
-                for song in candidates[:3]:
+                for song, beatmap_id, native_mode in candidates[:3]:
+                    if chart:
+                        target_mode = result["gameMode"]
+                        params = {"beatmap_id": beatmap_id, "format": "gif", "show_time_labels": False}
+                        if native_mode != target_mode:
+                            params["convert"] = PREVIEW_MODES[target_mode]
+                        animation = await client.request(Request("GET", "/beatmap/preview/image", params, image_types=("gif",)))
+                        media = Image.fromBytes(animation)
+                    else:
+                        try:
+                            audio = await download_preview(http, song.id)
+                        except (aiohttp.ClientError, asyncio.TimeoutError) as exc:
+                            raise ValueError("无法获取 osu! 音频预览，请稍后重试。") from exc
+                        media = Record.fromBase64(base64.b64encode(audio).decode("ascii")) if audio else None
                     attempts += 1
-                    try:
-                        audio = await download_preview(http, song.id)
-                    except (aiohttp.ClientError, asyncio.TimeoutError) as exc:
-                        raise ValueError("无法获取 osu! 音频预览，请稍后重试。") from exc
-                    if audio:
+                    if media:
                         user = result["username"] or f"osu! #{result['userId']}"
                         mode_name = ("Standard", "Taiko", "Catch", "Mania")[result["gameMode"]]
-                        return song, f"{user} · {mode_name}", audio
+                        return song, f"{user} · {mode_name}", media
                     if attempts >= 8:
                         raise ValueError("本次未抽到可播放的预览，请重新开局。")
         raise ValueError("本次未抽到有可用预览且今天未出过的曲目。")
 
-    async def start(self, client, caller, event, session, mode, prefix, model_enabled):
+    async def start(self, client, caller, event, session, mode, prefix, model_enabled, *, chart=False):
         if session in self.rounds:
             return "本群已有一局猜歌正在准备或进行中。"
         game = self.rounds[session] = Round(event.get_sender_id())
         started = False
         try:
-            async with asyncio.timeout(30):
-                song, source, audio = await self.pick(client, caller, event, session, mode)
+            async with asyncio.timeout(120 if chart else 30):
+                song, source, media = await self.pick(client, caller, event, session, mode, chart)
             if self.rounds.get(session) is not game:
                 return None
             notice = f"🎵 猜猜这是什么歌！直接发曲名抢答。答题时间 5 分钟，需要线索请发 {prefix}猜歌提示。"
             if model_enabled:
                 notice += f" 译名、简称或别名可以用 {prefix}作答 歌名，让小薄绿辅助判定。"
-            record = Record.fromBase64(base64.b64encode(audio).decode("ascii"))
             try:
                 async with asyncio.timeout(10):
-                    await event.send(MessageChain([record]))
+                    await event.send(MessageChain([media]))
             except Exception as exc:
-                logger.warning(f"Song guess audio send failed: {type(exc).__name__}")
-                return "猜歌音频发送失败，请重新开局。"
+                logger.warning(f"Song guess media send failed: {type(exc).__name__}")
+                return "猜歌 GIF 发送失败，请重新开局。" if chart else "猜歌音频发送失败，请重新开局。"
             if self.rounds.get(session) is not game:
                 return None
             self.seen(session).add(song.id)
@@ -210,7 +223,7 @@ class SongGuess:
             self.timers.add(game.timer)
             game.timer.add_done_callback(self.timers.discard)
             started = True
-            return notice
+            return None if chart else notice
         except TimeoutError:
             return "猜歌题目准备超时，请重新开局。"
         finally:

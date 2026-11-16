@@ -139,6 +139,29 @@ class SongGuessTests(unittest.IsolatedAsyncioTestCase):
         })
         self.assertNotIn("contexts", request)
 
+    async def test_chart_round_sends_only_one_unlabelled_gif_for_converted_bp(self):
+        event = self.answer_event("/谱面猜歌 :3")
+        event.get_group = self.event.get_group
+        self.client.request.side_effect = [
+            {"platform_uids": ["200"]},
+            {"userId": 2000, "username": "Player", "gameMode": 3,
+             "beatmapsets": [{"id": 42, "title": "Bad Apple!!", "titleUnicode": "",
+                              "artist": "Artist", "artistUnicode": "", "beatmapId": 84, "beatmapMode": 0}]},
+            b"GIF89a",
+        ]
+        with patch.object(guess, "download_preview", AsyncMock()) as download:
+            self.assertEqual([result async for result in self.plugin.handle_command(event)], [])
+            download.assert_not_awaited()
+        request = self.client.request.await_args.args[0]
+        self.assertEqual(request.path, "/beatmap/preview/image")
+        self.assertEqual(request.params, {"beatmap_id": 84, "format": "gif", "show_time_labels": False,
+                                          "convert": "mania"})
+        self.assertEqual(request.image_types, ("gif",))
+        self.assertEqual(len(event.sent.chain), 1)
+        self.assertIsInstance(event.sent.chain[0], guess.Image)
+        self.assertIn("已有一局", await self.game.start(self.client, None, event, self.session, None, "/", True))
+        self.assertIn("答对了", self.game.accept_local_answer(self.session, event, "Bad Apple"))
+
     async def test_explicit_answer_accepts_local_typo_without_model(self):
         await self.open_round()
         event = self.answer_event("/作答 Bad Aplpe")

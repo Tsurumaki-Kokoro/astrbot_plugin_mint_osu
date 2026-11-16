@@ -133,7 +133,7 @@ def command_prefixes(config) -> list[str]:
 
 def command_hint(text: str, config) -> str:
     prefix = command_prefixes(config)[0]
-    return re.sub(r"/([a-z][a-z0-9]*|猜歌提示|取消猜歌|猜歌|作答)(?=[\s:#、：，；。/]|$)", lambda m: prefix + m[1], text)
+    return re.sub(r"/([a-z][a-z0-9]*|谱面猜歌|猜歌提示|取消猜歌|猜歌|作答)(?=[\s:#、：，；。/]|$)", lambda m: prefix + m[1], text)
 
 
 def normalized_command(event: AstrMessageEvent, config, framework_config) -> str | None:
@@ -251,7 +251,7 @@ class MintOsuPlugin(Star):
             if command.name in SONG_GUESS_COMMANDS:
                 session = group_session(event)
                 if session is None:
-                    raise ValueError("音频猜歌目前支持 QQ OneBot 群聊。")
+                    raise ValueError("猜歌目前支持 QQ OneBot 群聊。")
                 result = await self._handle_song_guess(command, event, session)
                 if result:
                     yield event.plain_result(result)
@@ -370,7 +370,8 @@ class MintOsuPlugin(Star):
             self._client = self._create_client()
         caller = resolve_identity(event.get_platform_name(), event.get_platform_id(), event.get_sender_id())
         return await self._song_guess.start(
-            self._client, caller, event, session, command.mode, command_prefixes(self.config)[0], model_enabled
+            self._client, caller, event, session, command.mode, command_prefixes(self.config)[0], model_enabled,
+            chart=command.name == "谱面猜歌",
         )
 
     @filter.custom_filter(SongAnswerFilter)

@@ -5,7 +5,7 @@ import shlex
 from urllib.parse import urlsplit
 from dataclasses import dataclass
 
-COMMAND_PATTERN = re.compile(r"^/?(statme|stat|pr|recent|bp|beatmapset|beatmap|bind|unbind|mode|minthelp|nb|fix|analyze|history|scorehistory|score|search|preview|bpm|cover|mp|rating|oa|pp|previewv|rank|top5|mpwatch|weekly|compare|bpwatch|mintmenu|mintpanel|猜歌提示|取消猜歌|猜歌|作答)(?=\s|:|#|$)", re.I)
+COMMAND_PATTERN = re.compile(r"^/?(statme|stat|pr|recent|bp|beatmapset|beatmap|bind|unbind|mode|minthelp|nb|fix|analyze|history|scorehistory|score|search|preview|bpm|cover|mp|rating|oa|pp|previewv|rank|top5|mpwatch|weekly|compare|bpwatch|mintmenu|mintpanel|谱面猜歌|猜歌提示|取消猜歌|猜歌|作答)(?=\s|:|#|$)", re.I)
 MODE_NAMES = {"osu": 0, "std": 0, "standard": 0, "taiko": 1, "catch": 2, "ctb": 2, "fruits": 2, "mania": 3}
 
 
@@ -49,9 +49,9 @@ def parse_command(text: str, mentions: list[str]) -> Command:
     target = mentions[0] if mentions else None
     if target and name not in {"stat", "pr", "recent", "bp", "nb", "fix", "analyze", "history", "score", "scorehistory", "oa", "pp", "weekly", "compare", "bpwatch"}:
         raise ValueError("这个命令不支持 @用户。")
-    if name == "猜歌":
+    if name in {"猜歌", "谱面猜歌"}:
         if tail and not re.fullmatch(r":\s*[0-3]", tail):
-            raise ValueError("使用 /猜歌 或 /猜歌 :0～:3。")
+            raise ValueError(f"使用 /{name} 或 /{name} :0～:3。")
         return Command(name, mode=int(tail[-1]) if tail else None)
     if name == "作答":
         if not text[match.end():].startswith((" ", "\t")) or not 1 <= len(tail) <= 256:
