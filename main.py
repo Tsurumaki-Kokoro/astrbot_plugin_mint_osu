@@ -19,6 +19,9 @@ from .extras import avatar_archive, group_ranking, save_attachment
 from .subscriptions import Subscriptions
 from .player_subscriptions import PlayerSubscriptions
 from .player_features import compare_scores
+from .song_guess import COMMANDS as SONG_GUESS_COMMANDS, SongGuess, group_session
+
+SONG_GUESS_HELP = "群内音频猜歌：/猜歌 [:模式]、/猜歌提示、/作答 歌名、/取消猜歌"
 
 HELP = """osu! 小薄绿 命令：
 /oa：自己的名片；/oa @用户：单人名片；/oa 用户名列表：ZIP，空格用户名加引号
@@ -128,7 +131,7 @@ def command_prefixes(config) -> list[str]:
 
 def command_hint(text: str, config) -> str:
     prefix = command_prefixes(config)[0]
-    return re.sub(r"/([a-z]+)(?=[\s:#、：，；。/]|$)", lambda m: prefix + m[1], text)
+    return re.sub(r"/([a-z]+|猜歌提示|取消猜歌|猜歌|作答)(?=[\s:#、：，；。/]|$)", lambda m: prefix + m[1], text)
 
 
 def normalized_command(event: AstrMessageEvent, config, framework_config) -> str | None:
@@ -173,6 +176,21 @@ class MintCommandFilter(filter.CustomFilter):
         return text is not None
 
 
+class SongAnswerFilter(filter.CustomFilter):
+    def filter(self, event: AstrMessageEvent, cfg: AstrBotConfig) -> bool:
+        metadata = star_map.get(__name__)
+        plugin = metadata.star_cls if metadata else None
+        if plugin is None or event.get_sender_id() == event.get_self_id():
+            return False
+        session = group_session(event)
+        game = plugin._song_guess.active(session) if session else None
+        if game is None or not all(isinstance(part, Plain) for part in event.get_messages()):
+            return False
+        if normalized_command(event, plugin.config, cfg) is not None:
+            return False
+        return game.song.matches(command_text(event))
+
+
 @register("astrbot_plugin_mint_osu", "TRANCE", "通过 MintAPI 查询 osu! 资料、成绩与谱面", "1.1.0")
 class MintOsuPlugin(Star):
     def __init__(self, context: Context, config: AstrBotConfig):
@@ -182,6 +200,7 @@ class MintOsuPlugin(Star):
         self._client: MintClient | None = None
         self._watch: Subscriptions | None = None
         self._player_watch: PlayerSubscriptions | None = None
+        self._song_guess = SongGuess(context)
         self._qq_publish_lock = asyncio.Lock()
 
     async def initialize(self):
@@ -227,6 +246,14 @@ class MintOsuPlugin(Star):
             if text is None:
                 return
             command = parse_command(text, mentioned_users(event))
+            if command.name in SONG_GUESS_COMMANDS:
+                session = group_session(event)
+                if session is None:
+                    raise ValueError("音频猜歌目前支持 QQ OneBot 群聊。")
+                result = await self._handle_song_guess(command, event, session)
+                if result:
+                    yield event.plain_result(result)
+                return
             if command.name in {"mintmenu", "mintpanel"}:
                 yield event.plain_result(await self._publish_qq(command.name, event))
                 return
@@ -243,6 +270,8 @@ class MintOsuPlugin(Star):
                     chain.append(Plain("海报使用默认 / 前缀；当前可用前缀：" + "、".join(command_prefixes(self.config)) + "\n" + command_hint(HELP, self.config)))
                 if event.get_platform_name().lower() == "qq_official" and event.is_private_chat() and event.is_admin():
                     chain.append(Plain("管理员：/mintmenu 同步私聊菜单；/mintpanel 同步私聊和群聊指令面板。"))
+                if group_session(event):
+                    chain.append(Plain(command_hint(SONG_GUESS_HELP, self.config)))
                 yield event.chain_result(chain)
                 return
             if command.name == "mpwatch":
@@ -322,6 +351,31 @@ class MintOsuPlugin(Star):
         finally:
             event.stop_event()
 
+    async def _handle_song_guess(self, command, event, session):
+        model_enabled = self.config.get("song_guess_model_enabled", True)
+        if command.name == "作答":
+            return await self._song_guess.answer(session, event, command.query, model_enabled)
+        if command.name == "猜歌提示":
+            return self._song_guess.hint(session)
+        if command.name == "取消猜歌":
+            return self._song_guess.cancel(session, event)
+        if self._client is None:
+            self._client = self._create_client()
+        caller = resolve_identity(event.get_platform_name(), event.get_platform_id(), event.get_sender_id())
+        return await self._song_guess.start(
+            self._client, caller, event, session, command.mode, command_prefixes(self.config)[0], model_enabled
+        )
+
+    @filter.custom_filter(SongAnswerFilter)
+    async def handle_song_answer(self, event: AstrMessageEvent):
+        session = group_session(event)
+        result = self._song_guess.accept_local_answer(session, event, command_text(event))
+        if result:
+            try:
+                yield event.plain_result(result)
+            finally:
+                event.stop_event()
+
     async def _publish_qq(self, name, event):
         if event.get_platform_name().lower() != "qq_official" or not event.is_private_chat():
             raise ValueError("此指令仅限 QQ 官方机器人私聊使用。")
@@ -357,6 +411,7 @@ class MintOsuPlugin(Star):
         return "\n".join(reports)
 
     async def terminate(self):
+        await self._song_guess.close()
         if self._player_watch is not None:
             await self._player_watch.close()
             self._player_watch = None

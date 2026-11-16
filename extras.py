@@ -41,15 +41,15 @@ async def avatar_archive(client, command, event):
     return File(name="osu-avatar-cards.zip", file=path)
 
 
-async def group_ranking(client, command, caller, event):
+async def bound_group_members(client, caller, event, feature):
     if event.is_private_chat() or not event.get_group_id():
-        raise ValueError("排行榜只能在群聊中使用。")
+        raise ValueError(f"{feature}只能在群聊中使用。")
     group = await event.get_group()
     if group is None or group.members is None:
-        raise ValueError("当前平台无法提供群成员列表，暂不支持群排行榜。")
+        raise ValueError(f"当前平台无法提供群成员列表，暂不支持群{feature}。")
     ids = list(dict.fromkeys(str(member.user_id) for member in group.members if member.user_id))
     if group.member_count is not None and len(ids) < group.member_count:
-        raise ValueError("平台返回的群成员列表不完整，无法生成准确排行榜。")
+        raise ValueError(f"平台返回的群成员列表不完整，无法生成准确{feature}。")
     bound = []
     for index in range(0, len(ids), 100):
         result = await client.request(Request("POST", "/users/bindings", {}, {"platform": caller.platform, "platformUids": ids[index:index+100]}, image=False))
@@ -57,7 +57,11 @@ async def group_ranking(client, command, caller, event):
         if not isinstance(selected, list) or any(uid not in ids[index:index+100] for uid in selected):
             raise ValueError("绑定查询返回无效名单，请管理员检查服务。")
         bound.extend(selected)
-    bound = list(dict.fromkeys(bound))
+    return list(dict.fromkeys(bound))
+
+
+async def group_ranking(client, command, caller, event):
+    bound = await bound_group_members(client, caller, event, "排行榜")
     if not bound:
         raise ValueError("当前群没有已绑定的 osu! 用户。")
     if len(bound) > 100:
