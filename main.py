@@ -267,15 +267,16 @@ class MintOsuPlugin(Star):
                     chain = [Image.fromBytes(poster)]
                 except (ValueError, MintAPIError, aiohttp.ClientError, asyncio.TimeoutError) as exc:
                     logger.warning(f"Mint help poster unavailable; using text help: {type(exc).__name__}")
-                    chain = [Plain(command_hint(HELP, self.config))]
+                    help_text = HELP
+                    if group_session(event):
+                        help_text += "\n" + SONG_GUESS_HELP
+                    chain = [Plain(command_hint(help_text, self.config))]
                 else:
                     prefixes = command_prefixes(self.config)
                     if prefixes != ["/"]:
                         chain.append(Plain("海报以 / 为例，当前可用以下任一前缀触发命令：" + "、".join(prefixes)))
                 if event.get_platform_name().lower() == "qq_official" and event.is_private_chat() and event.is_admin():
                     chain.append(Plain("管理员：/mintmenu 同步私聊菜单；/mintpanel 同步私聊和群聊指令面板。"))
-                if group_session(event):
-                    chain.append(Plain(command_hint(SONG_GUESS_HELP, self.config)))
                 yield event.chain_result(chain)
                 return
             if command.name == "mpwatch":

@@ -537,6 +537,22 @@ class HttpTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(len(results[0].chain), 1)
         self.assertEqual(self.requests[-1][:4], ("GET", "/help/image", {}, "test-secret"))
 
+    async def test_onebot_group_help_includes_song_guess_in_text_fallback(self):
+        plugin = main.MintOsuPlugin(SimpleNamespace(), {"command_prefixes": ["!"]})
+        plugin._client = self.client
+        event = event_for([Plain("!minthelp")])
+        event.message_obj.group_id = "123"
+        results = [r async for r in plugin.handle_command(event)]
+        self.assertIsInstance(results[0].chain[0], Image)
+        self.assertEqual(len(results[0].chain), 2)
+        self.assertNotIn("猜歌", results[0].chain[1].text)
+
+        self.status = 500
+        results = [r async for r in plugin.handle_command(event)]
+        self.assertEqual(len(results[0].chain), 1)
+        for command in ("!猜歌 ", "!猜歌提示", "!作答 ", "!取消猜歌"):
+            self.assertIn(command, results[0].chain[0].text)
+
     async def test_help_failure_falls_back_to_text_and_keeps_admin_hint(self):
         for status, body, content_type in [(500, b'{"code":"RENDER_FAILED"}', "application/problem+json"),
                                           (404, b"not found", "text/plain"),
