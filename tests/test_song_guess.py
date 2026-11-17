@@ -101,7 +101,8 @@ class SongGuessTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_group_bp_to_audio_and_normalized_plain_answer(self):
         results = await self.open_round()
-        self.assertIn("/作答 歌名", results[0].chain[0].text)
+        self.assertIn("用 作答 歌名", results[0].chain[0].text)
+        self.assertIn("发 猜歌提示", results[0].chain[0].text)
         self.assertNotIn("Player", results[0].chain[0].text)
         self.assertIsInstance(self.event.sent.chain[0], Record)
         payload = await AiocqhttpMessageEvent._from_segment_to_dict(self.event.sent.chain[0])
@@ -168,7 +169,7 @@ class SongGuessTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(request.image_types, ("gif",))
         self.assertEqual(len(event.sent.chain), 1)
         self.assertIsInstance(event.sent.chain[0], guess.Image)
-        self.assertIn("已有一局", await self.game.start(self.client, None, event, self.session, None, "/", True))
+        self.assertIn("已有一局", await self.game.start(self.client, None, event, self.session, None, True))
         self.assertIn("答对了", self.game.accept_local_answer(self.session, event, "Bad Apple"))
 
     async def test_explicit_answer_accepts_local_typo_without_model(self):

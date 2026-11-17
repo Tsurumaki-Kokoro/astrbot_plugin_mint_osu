@@ -333,7 +333,7 @@ class ParsingTests(unittest.TestCase):
 
     def test_bind_conflict_and_target_unbound_messages(self):
         command = arguments.parse_command("/bind Player", [])
-        self.assertIn("先使用 /unbind", service.error_message(command, 409, "User already bound", None))
+        self.assertIn("先使用 unbind", service.error_message(command, 409, "User already bound", None))
         command = arguments.parse_command("/stat", ["200"])
         self.assertIn("对方", service.error_message(command, 404, "User not found", None))
         self.assertIn("5 秒", service.error_message(command, 503, "", "5"))
@@ -492,7 +492,7 @@ class HttpTests(unittest.IsolatedAsyncioTestCase):
         plugin._client = self.client
         self.status, self.reply, self.content_type = 404, b"User not found", "text/plain"
         results = [result async for result in plugin.handle_command(event_for([Plain("/statme")]))]
-        self.assertIn("/bind", results[0].chain[0].text)
+        self.assertIn("使用 bind 用户名", results[0].chain[0].text)
         self.reply = b"No best play record found"
         results = [result async for result in plugin.handle_command(event_for([Plain("/bp")]))]
         self.assertIn("没有符合条件", results[0].chain[0].text)
@@ -521,13 +521,12 @@ class HttpTests(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(self.requests[-1][2]["game_mode"], "3")
         results = [r async for r in plugin.handle_command(event_for([Plain("!minthelp")]))]
         self.assertIsInstance(results[0].chain[0], Image)
-        self.assertEqual(len(results[0].chain), 2)
-        self.assertEqual(results[0].chain[1].text, "海报以 / 为例，当前可用以下任一前缀触发命令：!、！、/")
+        self.assertEqual(len(results[0].chain), 1)
         self.status = 500
         results = [r async for r in plugin.handle_command(event_for([Plain("!minthelp")]))]
         self.assertEqual(len(results[0].chain), 1)
-        self.assertIn("!statme", results[0].chain[0].text)
-        self.assertIn("!rank:3、!top5：", results[0].chain[0].text)
+        self.assertIn("\nstatme ", results[0].chain[0].text)
+        self.assertIn("\nrank:3、top5：", results[0].chain[0].text)
 
     async def test_help_returns_image_without_player_identity_or_theme(self):
         plugin = main.MintOsuPlugin(SimpleNamespace(), {"theme": "invalid"})
@@ -544,13 +543,12 @@ class HttpTests(unittest.IsolatedAsyncioTestCase):
         event.message_obj.group_id = "123"
         results = [r async for r in plugin.handle_command(event)]
         self.assertIsInstance(results[0].chain[0], Image)
-        self.assertEqual(len(results[0].chain), 2)
-        self.assertNotIn("猜歌", results[0].chain[1].text)
+        self.assertEqual(len(results[0].chain), 1)
 
         self.status = 500
         results = [r async for r in plugin.handle_command(event)]
         self.assertEqual(len(results[0].chain), 1)
-        for command in ("!猜歌 ", "!谱面猜歌 ", "!猜歌提示", "!作答 ", "!取消猜歌"):
+        for command in ("：猜歌 ", "、谱面猜歌 ", "、猜歌提示", "、作答 ", "、取消猜歌"):
             self.assertIn(command, results[0].chain[0].text)
 
     async def test_help_failure_falls_back_to_text_and_keeps_admin_hint(self):
@@ -564,8 +562,8 @@ class HttpTests(unittest.IsolatedAsyncioTestCase):
                 event = event_for([Plain("/minthelp")], adapter="qq_official", group=False)
                 event.is_admin = lambda: True
                 results = [r async for r in plugin.handle_command(event)]
-                self.assertIn("/statme", results[0].chain[0].text)
-                self.assertIn("/mintpanel", results[0].chain[1].text)
+                self.assertIn("\nstatme ", results[0].chain[0].text)
+                self.assertIn("；mintpanel ", results[0].chain[1].text)
 
     async def test_help_image_keeps_admin_hint_only_in_official_admin_private_chat(self):
         for adapter, group, admin, count in [("qq_official", False, True, 2),
@@ -582,7 +580,7 @@ class HttpTests(unittest.IsolatedAsyncioTestCase):
         plugin = main.MintOsuPlugin(SimpleNamespace(), {})
         event = event_for([Plain("/minthelp")])
         results = [result async for result in plugin.handle_command(event)]
-        self.assertIn("/statme", results[0].chain[0].text)
+        self.assertIn("\nstatme ", results[0].chain[0].text)
         results = [result async for result in plugin.handle_command(event_for([Plain("/recent 2")]))]
         self.assertIn("只查询最近一条", results[0].chain[0].text)
         self.assertEqual(self.requests, [])

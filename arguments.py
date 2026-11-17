@@ -41,7 +41,7 @@ def parse_command(text: str, mentions: list[str]) -> Command:
     text = text.strip()
     match = COMMAND_PATTERN.match(text)
     if not match:
-        raise ValueError("无法识别命令，请使用 /minthelp 查看帮助。")
+        raise ValueError("无法识别命令，请使用 minthelp 查看帮助。")
     name = match[1].lower()
     tail = text[match.end():].strip()
     if len(set(mentions)) > 1:
@@ -55,7 +55,7 @@ def parse_command(text: str, mentions: list[str]) -> Command:
         return Command(name, mode=int(tail[-1]) if tail else None)
     if name == "作答":
         if not text[match.end():].startswith((" ", "\t")) or not 1 <= len(tail) <= 256:
-            raise ValueError("使用 /作答 歌名，歌名最多 256 字符。")
+            raise ValueError("使用 作答 歌名，歌名最多 256 字符。")
         return Command(name, query=tail)
     if name in {"猜歌提示", "取消猜歌"}:
         if tail:
@@ -73,7 +73,7 @@ def parse_command(text: str, mentions: list[str]) -> Command:
         if tokens and tokens[0] == "stop":
             action = tokens.pop(0)
         if len(tokens) != 1:
-            raise ValueError("使用 /mpwatch 比赛ID或链接、list、stop 比赛ID或链接、stopall。")
+            raise ValueError("使用 mpwatch 比赛ID或链接、list、stop 比赛ID或链接、stopall。")
         match_command = parse_command("/mp " + shlex.quote(tokens[0]), [])
         return Command(name, match_id=match_command.match_id, action=action)
     if name in {"weekly", "compare", "bpwatch"}:
@@ -90,7 +90,7 @@ def parse_command(text: str, mentions: list[str]) -> Command:
             if tokens:
                 from datetime import date as Date
                 if len(tokens) != 2 or tokens[0] != "-w":
-                    raise ValueError("使用 /weekly [@用户] [-w 周一日期][:模式]。")
+                    raise ValueError("使用 weekly [@用户] [-w 周一日期][:模式]。")
                 try:
                     value = Date.fromisoformat(tokens[1])
                 except ValueError:
@@ -105,21 +105,21 @@ def parse_command(text: str, mentions: list[str]) -> Command:
                 action = tokens.pop(0).lower()
             if action == "list":
                 if target or mode is not None:
-                    raise ValueError("使用 /bpwatch list [-p 页码] 查看当前群的全部模式订阅。")
+                    raise ValueError("使用 bpwatch list [-p 页码] 查看当前群的全部模式订阅。")
                 if tokens:
                     if len(tokens) != 2 or tokens[0] != "-p" or not tokens[1].isascii() or not tokens[1].isdigit() or not 1 <= int(tokens[1]) <= 1000000:
-                        raise ValueError("使用 /bpwatch list [-p 页码]。")
+                        raise ValueError("使用 bpwatch list [-p 页码]。")
                     page = int(tokens[1])
                 return Command(name, action=action, page=page)
             if action == "stopall":
                 if tokens or target or mode is not None:
-                    raise ValueError("/bpwatch stopall 不接受额外参数。")
+                    raise ValueError("bpwatch stopall 不接受额外参数。")
                 return Command(name, action=action)
             if len(tokens) > 1 or target and tokens or any(len(x) > 128 for x in tokens):
-                raise ValueError("使用 /bpwatch [用户名或@用户][:模式]，空格用户名加引号；stop 取消订阅。")
+                raise ValueError("使用 bpwatch [用户名或@用户][:模式]，空格用户名加引号；stop 取消订阅。")
             return Command(name, mode, username=tokens[0] if tokens else None, target_uid=target, action=action)
         if not tokens or not tokens[0].isascii() or not tokens[0].isdigit() or not 1 <= int(tokens[0]) <= 2147483647:
-            raise ValueError("使用 /compare [@用户] 谱面ID，或 /compare 谱面ID 用户A 用户B。")
+            raise ValueError("使用 compare [@用户] 谱面ID，或 compare 谱面ID 用户A 用户B。")
         map_id = int(tokens.pop(0))
         names, mods, legacy, seen = [], None, None, set()
         while tokens:
@@ -143,7 +143,7 @@ def parse_command(text: str, mentions: list[str]) -> Command:
             else:
                 names.append(token)
         if (target and names) or (not target and not 1 <= len(names) <= 2) or any(not x.strip() or len(x) > 128 for x in names):
-            raise ValueError("使用 /compare @用户 谱面ID，或 /compare 谱面ID 用户名 [另一用户名]；空格用户名加引号。")
+            raise ValueError("使用 compare @用户 谱面ID，或 compare 谱面ID 用户名 [另一用户名]；空格用户名加引号。")
         return Command(name, mode, beatmap_id=map_id, target_uid=target, usernames=tuple(names), mods=mods, legacy_only=legacy)
     if name == "oa":
         names = shlex.split(tail)
@@ -156,7 +156,7 @@ def parse_command(text: str, mentions: list[str]) -> Command:
         try:
             value = float(tail)
         except ValueError:
-            raise ValueError("请使用 /pp 增加PP值 [@用户]。")
+            raise ValueError("请使用 pp 增加PP值 [@用户]。")
         if not math.isfinite(value) or value <= 0:
             raise ValueError("增加 PP 必须是有限的正数。")
         return Command(name, target_uid=target, pp=value)
@@ -218,7 +218,7 @@ def parse_command(text: str, mentions: list[str]) -> Command:
             raise ValueError("模式请放在末尾，使用 :0～:3。")
     if name == "rank":
         if tail:
-            raise ValueError("请使用 /rank 或 /rank:0～:3。")
+            raise ValueError("请使用 rank 或 rank:0～:3。")
         return Command(name, mode=mode if mode is not None else 0)
     if name == "search":
         shlex.split(tail)  # Reject unmatched quotes, preserve official query syntax below.
@@ -245,12 +245,12 @@ def parse_command(text: str, mentions: list[str]) -> Command:
                 words.append(token)
         query = ' '.join(words)
         if not 1 <= len(query) <= 500:
-            raise ValueError("请使用 /search 关键词，关键词长度为 1～500 字符。")
+            raise ValueError("请使用 search 关键词，关键词长度为 1～500 字符。")
         return Command(name, mode, query=query, page=page, cursor=cursor)
     if name in {"preview", "previewv"}:
         tokens = shlex.split(tail)
         if not tokens or not re.fullmatch(r"[0-9]+", tokens[0]) or not 0 < int(tokens[0]) <= 2147483647:
-            raise ValueError("请使用 /preview 谱面ID [-m HD,DT] [-f gif或png]。")
+            raise ValueError("请使用 preview 谱面ID [-m HD,DT] [-f gif或png]。")
         map_id = int(tokens.pop(0))
         mods, format, seen, start, duration = None, "gif", set(), "preview", 30.0
         while tokens:
@@ -288,7 +288,7 @@ def parse_command(text: str, mentions: list[str]) -> Command:
         days = 1 if name == "nb" else 30
         if tail:
             if not re.fullmatch(r"#\s*[0-9]+", tail):
-                raise ValueError("天数请使用 #数字，例如 /nb #7 或 /history #30。")
+                raise ValueError("天数请使用 #数字，例如 nb #7 或 history #30。")
             days = int(tail[1:].strip())
         maximum = 365 if name == "nb" else 3650
         if not 1 <= days <= maximum:
@@ -325,22 +325,22 @@ def parse_command(text: str, mentions: list[str]) -> Command:
             days = min(int(digits), 2147483647) if len(digits) <= 10 else 2147483647
             tail = tail[:comparison.start()].strip()
         if "#" in tail:
-            raise ValueError("对比天数请放在末尾，使用 #非负整数，例如 /statme #7:3。")
+            raise ValueError("对比天数请放在末尾，使用 #非负整数，例如 statme #7:3。")
         if name == "statme":
             if tail:
-                raise ValueError("请使用 /statme [#天数][:模式] 查询自己。")
+                raise ValueError("请使用 statme [#天数][:模式] 查询自己。")
             return Command(name, mode, days=days)
         if target and tail:
             raise ValueError("用户名和 @用户只能选择一个。")
         if not target and not tail:
-            raise ValueError("请使用 /stat 用户名、/stat @用户，或 /statme 查询自己。")
+            raise ValueError("请使用 stat 用户名、stat @用户，或 statme 查询自己。")
         return Command(name, mode, username=tail or None, target_uid=target, days=days)
     if name == "bp":
         first, last = 1, None
         if tail:
             indices = re.fullmatch(r"(\d+)(?:\s*-\s*(\d+))?", tail)
             if not indices:
-                raise ValueError("请使用 /bp 3 或 /bp @用户 1-10，末尾可加 :模式。")
+                raise ValueError("请使用 bp 3 或 bp @用户 1-10，末尾可加 :模式。")
             first = int(indices[1])
             last = int(indices[2]) if indices[2] else None
         if first not in range(1, 101) or (last is not None and not first <= last <= min(100, first + 19)):
@@ -348,7 +348,7 @@ def parse_command(text: str, mentions: list[str]) -> Command:
         return Command(name, mode, first=first, last=last, target_uid=target)
     if name == "bind":
         if not tail:
-            raise ValueError("请使用 /bind osu!用户名。")
+            raise ValueError("请使用 bind osu!用户名。")
         return Command(name, username=tail)
     if name in {"beatmap", "beatmapset", "bpm", "cover"}:
         if not re.fullmatch(r"[0-9]+", tail) or not 0 < int(tail) <= 2147483647:
@@ -359,7 +359,7 @@ def parse_command(text: str, mentions: list[str]) -> Command:
         if value is None and tail in {"0", "1", "2", "3"}:
             value = int(tail)
         if value is None:
-            raise ValueError("请使用 /mode 0～3，或 osu、taiko、catch、mania。")
+            raise ValueError("请使用 mode 0～3，或 osu、taiko、catch、mania。")
         return Command(name, mode=value)
     if tail:
         raise ValueError("pr 和 recent 只查询最近一条，不接受序号。" if name in {"pr", "recent"} else "这个命令不接受额外参数。")

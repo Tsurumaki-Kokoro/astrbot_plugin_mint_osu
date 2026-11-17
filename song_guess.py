@@ -201,7 +201,7 @@ class SongGuess:
                         raise ValueError("本次未抽到可播放的预览，请重新开局。")
         raise ValueError("本次未抽到有可用预览且今天未出过的曲目。")
 
-    async def start(self, client, caller, event, session, mode, prefix, model_enabled, *, chart=False):
+    async def start(self, client, caller, event, session, mode, model_enabled, *, chart=False):
         if session in self.rounds:
             return "本群已有一局猜歌正在准备或进行中。"
         game = self.rounds[session] = Round(event.get_sender_id())
@@ -211,9 +211,9 @@ class SongGuess:
                 song, source, media = await self.pick(client, caller, event, session, mode, chart)
             if self.rounds.get(session) is not game:
                 return None
-            notice = f"🎵 猜猜这是什么歌！直接发曲名抢答。答题时间 5 分钟，需要线索请发 {prefix}猜歌提示。"
+            notice = "🎵 猜猜这是什么歌！直接发曲名抢答。答题时间 5 分钟，需要线索请发 猜歌提示。"
             if model_enabled:
-                notice += f" 译名、简称或别名可以用 {prefix}作答 歌名，让小薄绿辅助判定。"
+                notice += " 译名、简称或别名可以用 作答 歌名，让小薄绿辅助判定。"
             try:
                 async with asyncio.timeout(10):
                     await event.send(MessageChain([media]))

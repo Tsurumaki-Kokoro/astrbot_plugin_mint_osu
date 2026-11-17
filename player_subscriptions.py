@@ -159,7 +159,7 @@ class PlayerSubscriptions:
                 except MintAPIError as exc:
                     if exc.status == 410:
                         try:
-                            await self.deliver(session, f'{title}（osu! {uid}）· 模式 {mode} 的订阅已取消、过期或游标失效，已停止推送。管理员可先 /bpwatch stop {uid}:{mode}，再重新订阅。')
+                            await self.deliver(session, f'{title}（osu! {uid}）· 模式 {mode} 的订阅已取消、过期或游标失效，已停止推送。管理员可先 bpwatch stop {uid}:{mode}，再重新订阅。')
                             self.db.execute('DELETE FROM players WHERE session=? AND user_id=? AND mode=?', (session, uid, mode)); self.db.commit()
                         except asyncio.CancelledError:
                             raise

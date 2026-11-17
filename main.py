@@ -21,51 +21,51 @@ from .player_subscriptions import PlayerSubscriptions
 from .player_features import compare_scores
 from .song_guess import COMMANDS as SONG_GUESS_COMMANDS, SongGuess, group_session
 
-SONG_GUESS_HELP = "群内猜歌：/猜歌 [:模式]、/谱面猜歌 [:模式]、/猜歌提示、/作答 歌名、/取消猜歌"
+SONG_GUESS_HELP = "群内猜歌：猜歌 [:模式]、谱面猜歌 [:模式]、猜歌提示、作答 歌名、取消猜歌"
 
 HELP = """osu! 小薄绿 命令：
-/oa：自己的名片；/oa @用户：单人名片；/oa 用户名列表：ZIP，空格用户名加引号
-/pp 增加PP [@用户]：增加 PP 所需成绩与 BP 位置
-/previewv 谱面ID [-m HD,DT] [-s preview] [-d 30]：视频
-/rank:3、/top5：当前群已绑定成员的排行榜
-/stat 用户名 [#天数] 或 /stat @用户 [#天数]：资料卡
-/statme [#天数]：自己的资料卡，默认对比当日凌晨
+oa：自己的名片；oa @用户：单人名片；oa 用户名列表：ZIP，空格用户名加引号
+pp 增加PP [@用户]：增加 PP 所需成绩与 BP 位置
+previewv 谱面ID [-m HD,DT] [-s preview] [-d 30]：视频
+rank:3、top5：当前群已绑定成员的排行榜
+stat 用户名 [#天数] 或 stat @用户 [#天数]：资料卡
+statme [#天数]：自己的资料卡，默认对比当日凌晨
 对比天数超出历史范围时使用最早可用快照
-/pr [@用户]：最近一条成绩，不含失败
-/recent [@用户]：最近一条成绩，包含失败
-/bp [@用户] [序号或区间]：BP，默认第 1 条
-/nb [@用户] [#天数]：新增 BP，默认 1 天
-/weekly [@用户] [-w YYYY-MM-DD][:模式]：个人周报，默认上一完整周
-/compare [@用户] 谱面ID [-m HD,HR] [-l stable]：与自己对比
-/compare 谱面ID 用户A 用户B：两名 osu! 玩家的同图成绩，空格名字加引号
-/bpwatch [用户名或@用户][:模式]：订阅本群玩家动态，省略玩家为自己
-/bpwatch list [-p 2]：本群订阅；/bpwatch stop [用户名或@用户][:模式]、/bpwatch stopall：取消
+pr [@用户]：最近一条成绩，不含失败
+recent [@用户]：最近一条成绩，包含失败
+bp [@用户] [序号或区间]：BP，默认第 1 条
+nb [@用户] [#天数]：新增 BP，默认 1 天
+weekly [@用户] [-w YYYY-MM-DD][:模式]：个人周报，默认上一完整周
+compare [@用户] 谱面ID [-m HD,HR] [-l stable]：与自己对比
+compare 谱面ID 用户A 用户B：两名 osu! 玩家的同图成绩，空格名字加引号
+bpwatch [用户名或@用户][:模式]：订阅本群玩家动态，省略玩家为自己
+bpwatch list [-p 2]：本群订阅；bpwatch stop [用户名或@用户][:模式]、bpwatch stopall：取消
 玩家订阅增删需要群管理员或 AstrBot 管理员；省略模式时订阅 Standard，stop 默认取消玩家全部模式
-/fix [@用户]：BP 补 FC 分析
-/analyze [@用户]：BP 成绩分析
-/history [@用户] [#天数]：PP/排名趋势，默认 30 天
-/score [@用户] 谱面ID：个人谱面成绩
-/scorehistory [@用户] 谱面ID [-m HD,HR] [-p 2]：谱面成绩历史
-/beatmap 谱面ID：谱面信息
-/search 关键词 [-p 2] [-c 游标]：谱面搜索，末尾可加 :模式
-/preview 谱面ID [-m HD,DT] [-f png]：默认 GIF 预览
-/bpm 谱面ID：BPM 时间轴
-/cover 谱面ID：谱面封面
-/beatmapset 谱面集ID：谱面集信息
-/mp 比赛ID或链接 [-p 2] [-t team-vs] [--trim 2,1]：比赛历史
-/rating 比赛ID或链接 [-a bathbot] [-p 2] [-t team-vs] [--trim 2,1]：比赛评分
+fix [@用户]：BP 补 FC 分析
+analyze [@用户]：BP 成绩分析
+history [@用户] [#天数]：PP/排名趋势，默认 30 天
+score [@用户] 谱面ID：个人谱面成绩
+scorehistory [@用户] 谱面ID [-m HD,HR] [-p 2]：谱面成绩历史
+beatmap 谱面ID：谱面信息
+search 关键词 [-p 2] [-c 游标]：谱面搜索，末尾可加 :模式
+preview 谱面ID [-m HD,DT] [-f png]：默认 GIF 预览
+bpm 谱面ID：BPM 时间轴
+cover 谱面ID：谱面封面
+beatmapset 谱面集ID：谱面集信息
+mp 比赛ID或链接 [-p 2] [-t team-vs] [--trim 2,1]：比赛历史
+rating 比赛ID或链接 [-a bathbot] [-p 2] [-t team-vs] [--trim 2,1]：比赛评分
 省略 -p 或用 -p 0 输出完整长图，使用 -p 1 等正数分页
 先用 -t 筛选队伍类型，再用 --trim 2,1 跳过开头两局和结尾一局
-/mpwatch 比赛ID或链接：订阅比赛；list：列表；stop 比赛ID或链接、stopall：停止
+mpwatch 比赛ID或链接：订阅比赛；list：列表；stop 比赛ID或链接、stopall：停止
 订阅上限与检查间隔由插件配置决定；群内修改需要管理员权限
 评分算法：osuplus（默认）、bathbot、flashlight
-/bind 用户名、/unbind：绑定与解绑
-/mode 0～3：默认模式
-/minthelp：查看帮助
+bind 用户名、unbind：绑定与解绑
+mode 0～3：默认模式
+minthelp：查看帮助
 QQ 官方适配器不支持比赛与玩家动态订阅主动推送
 资料卡和成绩命令末尾可加 :0～:3。
 0 osu! · 1 taiko · 2 catch · 3 mania
-例如 /statme:3、/bp 1-10:3、/nb #7:3"""
+例如 statme:3、bp 1-10:3、nb #7:3"""
 
 
 def command_text(event: AstrMessageEvent) -> str:
@@ -118,7 +118,7 @@ def mentioned_users(event: AstrMessageEvent) -> list[str]:
                         raise ValueError("当前 QQ 官方消息没有提供被提及用户的绑定 ID。")
                 ids.append(uid)
     if adapter == "telegram" and any(not uid.isdigit() for uid in ids):
-        raise ValueError("当前 Telegram 适配器仅提供提及用户名，无法确认绑定用户 ID；请使用 /stat osu!用户名。")
+        raise ValueError("当前 Telegram 适配器仅提供提及用户名，无法确认绑定用户 ID；请使用 stat osu!用户名。")
     return list(dict.fromkeys(ids))
 
 
@@ -129,11 +129,6 @@ def command_prefixes(config) -> list[str]:
     ):
         raise ValueError("命令前缀必须是非空字符串列表，不能包含空前缀。")
     return sorted(dict.fromkeys(prefixes), key=len, reverse=True)
-
-
-def command_hint(text: str, config) -> str:
-    prefix = command_prefixes(config)[0]
-    return re.sub(r"/([a-z][a-z0-9]*|谱面猜歌|猜歌提示|取消猜歌|猜歌|作答)(?=[\s:#、：，；。/]|$)", lambda m: prefix + m[1], text)
 
 
 def normalized_command(event: AstrMessageEvent, config, framework_config) -> str | None:
@@ -238,7 +233,7 @@ class MintOsuPlugin(Star):
 
     @filter.custom_filter(MintCommandFilter)
     async def handle_command(self, event: AstrMessageEvent):
-        """osu! 小薄绿：资料、成绩、BP 分析、历史、谱面与绑定命令；/minthelp 查看用法。"""
+        """osu! 小薄绿：资料、成绩、BP 分析、历史、谱面与绑定命令；minthelp 查看用法。"""
         command = None
         try:
             text = event.get_extra("mint_osu_command_text")
@@ -270,13 +265,9 @@ class MintOsuPlugin(Star):
                     help_text = HELP
                     if group_session(event):
                         help_text += "\n" + SONG_GUESS_HELP
-                    chain = [Plain(command_hint(help_text, self.config))]
-                else:
-                    prefixes = command_prefixes(self.config)
-                    if prefixes != ["/"]:
-                        chain.append(Plain("海报以 / 为例，当前可用以下任一前缀触发命令：" + "、".join(prefixes)))
+                    chain = [Plain(help_text)]
                 if event.get_platform_name().lower() == "qq_official" and event.is_private_chat() and event.is_admin():
-                    chain.append(Plain("管理员：/mintmenu 同步私聊菜单；/mintpanel 同步私聊和群聊指令面板。"))
+                    chain.append(Plain("管理员：mintmenu 同步私聊菜单；mintpanel 同步私聊和群聊指令面板。"))
                 yield event.chain_result(chain)
                 return
             if command.name == "mpwatch":
@@ -342,10 +333,10 @@ class MintOsuPlugin(Star):
                     chain.append(Plain(notice))
                 yield event.chain_result(chain)
             else:
-                message = {"bind": "绑定成功。可使用 /statme 查询资料卡。", "unbind": "已解除绑定。", "mode": "默认模式已更新。"}[command.name]
-                yield event.plain_result(command_hint(message, self.config))
+                message = {"bind": "绑定成功。可使用 statme 查询资料卡。", "unbind": "已解除绑定。", "mode": "默认模式已更新。"}[command.name]
+                yield event.plain_result(message)
         except ValueError as exc:
-            yield event.plain_result(command_hint(str(exc), self.config))
+            yield event.plain_result(str(exc))
         except MintAPIError as exc:
             logger.warning(f"MintAPI request failed: HTTP {exc.status}")
             yield event.plain_result(error_message(command, exc.status, exc.detail, exc.retry_after))
@@ -374,7 +365,7 @@ class MintOsuPlugin(Star):
             self._client = self._create_client()
         caller = resolve_identity(event.get_platform_name(), event.get_platform_id(), event.get_sender_id())
         return await self._song_guess.start(
-            self._client, caller, event, session, command.mode, command_prefixes(self.config)[0], model_enabled,
+            self._client, caller, event, session, command.mode, model_enabled,
             chart=command.name == "谱面猜歌",
         )
 

@@ -119,7 +119,7 @@ def error_message(command: Command, status: int, detail: str, retry_after: str |
     if isinstance(error, dict):
         code = error.get("code")
         if code == "USER_NOT_BOUND":
-            return "对方尚未绑定 osu! 账号。" if command.target_uid else "你尚未绑定 osu! 账号，请使用 /bind 用户名。"
+            return "对方尚未绑定 osu! 账号。" if command.target_uid else "你尚未绑定 osu! 账号，请使用 bind 用户名。"
         if code == "HISTORY_NOT_FOUND":
             return "该周期尚无历史快照，完整周报需要积累数据。" if command.name == "weekly" else "没有可用的 PP 或排名历史。"
         if code == "SCORE_NOT_FOUND":
@@ -142,14 +142,14 @@ def error_message(command: Command, status: int, detail: str, retry_after: str |
     if status == 409 and command.name == "mpwatch":
         return "比赛追踪数量已达到服务上限，请停止已有订阅或联系管理员。"
     if status == 409 and command.name == "bind":
-        return "你已经绑定过账号，请先使用 /unbind 解绑。"
+        return "你已经绑定过账号，请先使用 unbind 解绑。"
     if status == 404:
         if command.name in {"mp", "rating", "mpwatch"}:
             return "找不到这个比赛，请检查比赛 ID 或链接。"
         if "osu! user not found" in detail:
             return "找不到这个 osu! 玩家，请检查用户名。"
         if "User not found" in detail or "binding not found" in detail:
-            return "对方尚未绑定 osu! 账号。" if command.target_uid else "你尚未绑定 osu! 账号，请使用 /bind 用户名。"
+            return "对方尚未绑定 osu! 账号。" if command.target_uid else "你尚未绑定 osu! 账号，请使用 bind 用户名。"
         if command.name == "nb":
             return "指定天数内没有新增 BP。"
         if command.name == "fix":

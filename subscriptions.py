@@ -142,7 +142,7 @@ class Subscriptions:
             state = await self.state(command.match_id)
             if state['closed']:
                 await self.cleanup_remotes()
-                raise ValueError('这场比赛已经结束，无需订阅；使用 /mp 或 /rating 查询。')
+                raise ValueError('这场比赛已经结束，无需订阅；使用 mp 或 rating 查询。')
             seen = [game['game_id'] for game in state['games']]
             self.db.execute('INSERT INTO subscriptions VALUES (?,?,?,?)', (session, command.match_id, state['name'], json.dumps(seen)))
             self.db.commit()
@@ -188,7 +188,7 @@ class Subscriptions:
                         if session in blocked:
                             continue
                         try:
-                            await self.deliver(session, [Plain(f"比赛 {state['name']}（{mid}）已结束，订阅已停止。使用 /rating {mid} 查看评分。")])
+                            await self.deliver(session, [Plain(f"比赛 {state['name']}（{mid}）已结束，订阅已停止。使用 rating {mid} 查看评分。")])
                             self.db.execute('DELETE FROM subscriptions WHERE session=? AND match_id=?', (session, mid))
                             self.db.commit()
                         except Exception as exc:

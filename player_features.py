@@ -14,7 +14,7 @@ async def bound_player(client, caller, uid, mode=0):
         except (ValueError, TypeError):
             error = {}
         if isinstance(error, dict) and error.get('code') == 'USER_NOT_BOUND':
-            raise ValueError('你尚未绑定 osu! 账号，请使用 /bind 用户名。' if str(uid) == caller.uid else '对方尚未绑定 osu! 账号。') from exc
+            raise ValueError('你尚未绑定 osu! 账号，请使用 bind 用户名。' if str(uid) == caller.uid else '对方尚未绑定 osu! 账号。') from exc
         raise
     users = value.get('users')
     if not isinstance(users, list) or len(users) != 1 or not isinstance(users[0], dict) or str(users[0].get('platformUid')) != str(uid):
