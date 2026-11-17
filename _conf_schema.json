@@ -17,7 +17,14 @@
     "description": "猜歌模型辅助判定",
     "type": "bool",
     "default": true,
-    "hint": "仅当群友使用 /作答 且答案未直接匹配时调用当前会话的聊天模型。"
+    "hint": "仅当群友使用 /作答 且答案未直接匹配时调用聊天模型。"
+  },
+  "song_guess_model_provider_id": {
+    "description": "猜歌判定模型",
+    "type": "string",
+    "_special": "select_provider",
+    "default": "",
+    "hint": "从 AstrBot 已配置的聊天模型中选择。留空时使用当前会话的聊天模型。"
   },
   "api_base_url": {
     "description": "MintAPI 地址",

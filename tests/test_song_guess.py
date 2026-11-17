@@ -139,6 +139,15 @@ class SongGuessTests(unittest.IsolatedAsyncioTestCase):
         })
         self.assertNotIn("contexts", request)
 
+    async def test_explicit_alias_uses_configured_song_guess_provider(self):
+        self.plugin.config["song_guess_model_provider_id"] = "song-judge"
+        await self.open_round()
+        event = self.answer_event("/作答 坏苹果")
+        results = [result async for result in self.plugin.handle_command(event)]
+        self.assertIn("Caller 答对了", results[0].chain[0].text)
+        self.assertEqual(self.context.llm_generate.await_args.kwargs["chat_provider_id"], "song-judge")
+        self.context.get_current_chat_provider_id.assert_not_awaited()
+
     async def test_chart_round_sends_only_one_unlabelled_gif_for_converted_bp(self):
         event = self.answer_event("/谱面猜歌 :3")
         event.get_group = self.event.get_group
@@ -185,6 +194,38 @@ class SongGuessTests(unittest.IsolatedAsyncioTestCase):
         release.set()
         self.assertIsNone(await pending)
         self.context.send_message.assert_not_awaited()
+
+    async def test_five_model_judgments_share_capacity_and_only_one_wins(self):
+        await self.open_round()
+        release = asyncio.Event()
+
+        async def judge(**kwargs):
+            await release.wait()
+            return SimpleNamespace(completion_text="SAME")
+
+        self.context.llm_generate.side_effect = judge
+        pending = [
+            asyncio.create_task(self.game.answer(self.session, self.event, f"别名{i}", True))
+            for i in range(5)
+        ]
+        try:
+            await asyncio.sleep(0)
+            self.assertEqual(self.context.llm_generate.await_count, 5)
+            other_session = "other-group"
+            self.game.rounds[other_session] = guess.Round(
+                owner="100", song=self.song, source="Player",
+                deadline=self.game.rounds[self.session].deadline,
+            )
+            busy = await self.game.answer(other_session, self.event, "另一个别名", True)
+            self.assertIn("稍后再试", busy)
+            self.assertEqual(self.context.llm_generate.await_count, 5)
+        finally:
+            release.set()
+            results = await asyncio.gather(*pending)
+        winners = [result for result in results if result is not None]
+        self.assertEqual(len(winners), 1)
+        self.assertIn("答对了", winners[0])
+        self.assertIn("答对了", await self.game.answer(other_session, self.event, "另一个别名", True))
 
     async def test_audio_failure_releases_group_without_consuming_song(self):
         self.event.send = AsyncMock(side_effect=RuntimeError("send failed"))

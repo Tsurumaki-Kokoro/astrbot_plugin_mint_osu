@@ -361,7 +361,11 @@ class MintOsuPlugin(Star):
     async def _handle_song_guess(self, command, event, session):
         model_enabled = self.config.get("song_guess_model_enabled", True)
         if command.name == "作答":
-            return await self._song_guess.answer(session, event, command.query, model_enabled)
+            return await self._song_guess.answer(
+                session, event, command.query,
+                model_enabled=model_enabled,
+                model_provider_id=self.config.get("song_guess_model_provider_id", ""),
+            )
         if command.name == "猜歌提示":
             return self._song_guess.hint(session)
         if command.name == "取消猜歌":
