@@ -175,27 +175,35 @@ class SongGuess:
                                 item["artist"] or "", item["artistUnicode"] or "")
                     if song.id in seen or not song.answers:
                         continue
-                    beatmap_id, native_mode = item.get("beatmapId"), item.get("beatmapMode")
-                    if chart and (type(beatmap_id) is not int or beatmap_id <= 0 or native_mode not in range(4)):
+                    beatmap_id = item.get("beatmapId")
+                    if chart and (type(beatmap_id) is not int or beatmap_id <= 0):
                         continue
-                    songs.setdefault(song.id, (song, beatmap_id, native_mode))
+                    songs.setdefault(song.id, (song, beatmap_id))
                 candidates = list(songs.values())
                 random.shuffle(candidates)
-                for song, beatmap_id, native_mode in candidates[:3]:
+                for song, beatmap_id in candidates[:3]:
+                    attempts += 1
                     if chart:
-                        target_mode = result["gameMode"]
-                        params = {"beatmap_id": beatmap_id, "format": "gif", "show_time_labels": False}
-                        if native_mode != target_mode:
-                            params["convert"] = PREVIEW_MODES[target_mode]
-                        animation = await client.request(Request("GET", "/beatmap/preview/image", params, image_types=("gif",)))
-                        media = Image.fromBytes(animation)
+                        params = {
+                            "beatmap_id": beatmap_id, "format": "gif", "show_time_labels": False,
+                            "convert": PREVIEW_MODES[result["gameMode"]],
+                        }
+                        try:
+                            animation = await client.request(
+                                Request("GET", "/beatmap/preview/image", params, image_types=("gif",))
+                            )
+                        except MintAPIError as exc:
+                            if not is_unconvertible_preview(exc):
+                                raise
+                            media = None
+                        else:
+                            media = Image.fromBytes(animation)
                     else:
                         try:
                             audio = await download_preview(http, song.id)
                         except (aiohttp.ClientError, asyncio.TimeoutError) as exc:
                             raise ValueError("无法获取 osu! 音频预览，请稍后重试。") from exc
                         media = Record.fromBase64(base64.b64encode(audio).decode("ascii")) if audio else None
-                    attempts += 1
                     if media:
                         user = result["username"] or f"osu! #{result['userId']}"
                         mode_name = ("Standard", "Taiko", "Catch", "Mania")[result["gameMode"]]
@@ -397,6 +405,18 @@ class SongGuess:
         for task in timers:
             task.cancel()
         await asyncio.gather(*timers, return_exceptions=True)
+
+
+def is_unconvertible_preview(exc):
+    if exc.status != 400:
+        return False
+    try:
+        payload = json.loads(exc.detail)
+    except (TypeError, ValueError):
+        return False
+    # MintAPI currently exposes this specific conversion failure under INVALID_ARGUMENT.
+    return (isinstance(payload, dict) and payload.get("code") == "INVALID_ARGUMENT"
+            and payload.get("message") == "Only Standard beatmaps can be converted to another mode.")
 
 
 def error_code(exc):

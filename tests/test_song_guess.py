@@ -172,6 +172,49 @@ class SongGuessTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn("已有一局", await self.game.start(self.client, None, event, self.session, None, True))
         self.assertIn("答对了", self.game.accept_local_answer(self.session, event, "Bad Apple"))
 
+    async def test_catch_preview_uses_bp_mode_and_skips_an_unconvertible_map(self):
+        event = self.answer_event("/谱面猜歌 :2")
+        event.get_group = self.event.get_group
+        maps = [
+            {"id": item, "title": title, "titleUnicode": "", "artist": "", "artistUnicode": "",
+             "beatmapId": item + 10, **metadata}
+            for item, title, metadata in (
+                (40, "Unsupported", {"beatmapMode": 1}),
+                (42, "Missing source", {}),
+            )
+        ]
+        rejected = main.MintAPIError(400, json.dumps({
+            "code": "INVALID_ARGUMENT", "message": "Only Standard beatmaps can be converted to another mode."
+        }))
+        self.client.request.side_effect = [
+            {"platform_uids": ["200"]},
+            {"userId": 2000, "username": "Player", "gameMode": 2, "beatmapsets": maps},
+            rejected, b"GIF89a",
+        ]
+        with patch.object(guess.random, "shuffle"):
+            self.assertEqual([item async for item in self.plugin.handle_command(event)], [])
+        requests = [call.args[0] for call in self.client.request.await_args_list[2:]]
+        self.assertEqual([(req.params["beatmap_id"], req.params.get("convert")) for req in requests],
+                         [(50, "ctb"), (52, "ctb")])
+        self.assertIn("Catch", self.game.active(self.session).source)
+
+    async def test_catch_preview_propagates_renderer_failure_for_native_map(self):
+        event = self.answer_event("/谱面猜歌 :2")
+        event.get_group = self.event.get_group
+        unavailable = main.MintAPIError(502, '{"code":"PREVIEW_UNAVAILABLE"}')
+        self.client.request.side_effect = [
+            {"platform_uids": ["200"]},
+            {"userId": 2000, "username": "Player", "gameMode": 2,
+             "beatmapsets": [{"id": 42, "title": "Native Catch", "titleUnicode": "",
+                              "artist": "", "artistUnicode": "", "beatmapId": 52, "beatmapMode": 2}]},
+            unavailable,
+        ]
+        with self.assertRaises(main.MintAPIError) as failure:
+            await self.game.pick(self.client, main.resolve_identity("aiocqhttp", "bot", "1"),
+                                 event, self.session, 2, chart=True)
+        self.assertIs(failure.exception, unavailable)
+        self.assertEqual(self.client.request.await_args.args[0].params["convert"], "ctb")
+
     async def test_explicit_answer_accepts_local_typo_without_model(self):
         await self.open_round()
         event = self.answer_event("/作答 Bad Aplpe")
