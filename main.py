@@ -22,10 +22,11 @@ from .subscriptions import Subscriptions
 from .player_subscriptions import PlayerSubscriptions
 from .player_features import compare_scores
 from .usage_stats import UsageStats
+from .song_leaderboard import SongLeaderboard
 from . import pricing
 from .song_guess import COMMANDS as SONG_GUESS_COMMANDS, SongGuess, group_session
 
-SONG_GUESS_HELP = "群内猜歌：猜歌 [:模式]、谱面猜歌 [:模式]、猜歌提示、作答 歌名、取消猜歌"
+SONG_GUESS_HELP = "群内猜歌：猜歌 [:模式]、谱面猜歌 [:模式]、猜歌提示、作答 歌名、取消猜歌、猜歌榜 [上周]"
 
 HELP = """osu! 小薄绿 命令：
 oa：自己的名片；oa @用户：单人名片；oa 用户名列表：ZIP，空格用户名加引号
@@ -203,10 +204,18 @@ class MintOsuPlugin(Star):
         self._player_watch: PlayerSubscriptions | None = None
         self._stats = None
         self._stats_cleanup = None
-        self._song_guess = SongGuess(context, self._record_judgment, self._record_local_win)
+        self._song_board = None
+        self._song_guess = SongGuess(
+            context, self._record_judgment, self._record_local_win, self._record_song_round
+        )
         self._qq_publish_lock = asyncio.Lock()
 
     async def initialize(self):
+        try:
+            path = StarTools.get_data_dir("astrbot_plugin_mint_osu") / "song_leaderboard.sqlite3"
+            self._song_board = SongLeaderboard(path)
+        except Exception as exc:
+            logger.warning(f"Song leaderboard unavailable: {type(exc).__name__}")
         try:
             path = StarTools.get_data_dir("astrbot_plugin_mint_osu") / "usage_stats.sqlite3"
             self._stats = UsageStats(path)
@@ -245,6 +254,13 @@ class MintOsuPlugin(Star):
                                 round((perf_counter() - started) * 1000))
         except Exception as exc:
             logger.warning(f"Mint command statistics write failed: {type(exc).__name__}")
+
+    def _record_song_round(self, *record):
+        if self._song_board is not None:
+            try:
+                self._song_board.record(*record)
+            except Exception as exc:
+                logger.warning(f"Song leaderboard write failed: {type(exc).__name__}")
 
     def _record_local_win(self, event):
         self._record_command(event, "local_win", "ok", time(), perf_counter())
@@ -455,6 +471,10 @@ class MintOsuPlugin(Star):
             event.stop_event()
 
     async def _handle_song_guess(self, command, event, session):
+        if command.name == "猜歌榜":
+            if self._song_board is None:
+                return "猜歌榜暂时不可用。"
+            return self._song_board.render(session, previous=command.query == "上周")
         model_enabled = self.config.get("song_guess_model_enabled", True)
         if command.name == "作答":
             return await self._song_guess.answer(
@@ -521,6 +541,9 @@ class MintOsuPlugin(Star):
 
     async def terminate(self):
         await self._song_guess.close()
+        if self._song_board is not None:
+            self._song_board.close()
+            self._song_board = None
         if self._stats_cleanup is not None:
             self._stats_cleanup.cancel()
             await asyncio.gather(self._stats_cleanup, return_exceptions=True)

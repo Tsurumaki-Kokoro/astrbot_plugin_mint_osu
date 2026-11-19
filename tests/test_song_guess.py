@@ -222,6 +222,18 @@ class SongGuessTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn("Caller 答对了", results[0].chain[0].text)
         self.context.llm_generate.assert_not_awaited()
 
+    async def test_song_board_command_reports_a_settled_local_answer(self):
+        self.plugin._song_board = main.SongLeaderboard(":memory:")
+        await self.open_round()
+        event = self.answer_event("/作答 " + self.song.title)
+        self.assertIn("答对了", [item async for item in self.plugin.handle_command(event)][0].chain[0].text)
+        query = self.answer_event("/猜歌榜")
+        board = [item async for item in self.plugin.handle_command(query)][0].chain[0].text
+        self.assertIn("Caller · 1 局", board)
+        self.assertIn("报起来吧！", board)
+        self.assertNotIn("最佳搜狗", board)
+        self.context.llm_generate.assert_not_awaited()
+
     async def test_exact_answer_wins_while_model_is_pending(self):
         self.plugin._stats = main.UsageStats(":memory:")
         await self.open_round()

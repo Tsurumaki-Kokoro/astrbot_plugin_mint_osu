@@ -4,6 +4,7 @@ from time import perf_counter, time
 import base64
 from dataclasses import dataclass, field
 from datetime import date
+from difflib import SequenceMatcher
 import json
 import random
 import re
@@ -19,7 +20,7 @@ from .extras import bound_group_members
 from .mint_client import MintAPIError
 from .service import Request
 
-COMMANDS = {"猜歌", "谱面猜歌", "猜歌提示", "取消猜歌", "作答"}
+COMMANDS = {"猜歌", "谱面猜歌", "猜歌提示", "取消猜歌", "作答", "猜歌榜"}
 ONEBOT = {"aiocqhttp", "onebot", "onebot_v11", "qq"}
 ROUND_SECONDS = 300
 MAX_CONCURRENT_MODEL_JUDGMENTS = 5
@@ -99,10 +100,22 @@ class Song:
     def answers(self):
         return {title_key(self.title), title_key(self.title_unicode)} - {""}
 
-    def matches(self, answer):
+    def local_score(self, answer):
         key = title_key(answer)
         titles = self.answers
-        return key in titles or any(matches_transposition(title, key) for title in titles)
+        if key in titles:
+            return 10000
+        if any(matches_transposition(title, key) for title in titles):
+            return 10000 - round(10000 / len(key))
+        return None
+
+    def matches(self, answer):
+        return self.local_score(answer) is not None
+
+    def similarity(self, answer):
+        key = title_key(answer)
+        return max((round(10000 * SequenceMatcher(None, title, key).ratio()) for title in self.answers),
+                   default=0)
 
 
 @dataclass
@@ -114,6 +127,9 @@ class Round:
     timer: asyncio.Task | None = None
     hints: int = 0
     judged: set[str] = field(default_factory=set)
+    owner_name: str = ""
+    opened: float = 0
+    attempts: list[tuple] = field(default_factory=list)
 
 
 async def download_preview(http, beatmapset_id):
@@ -132,10 +148,11 @@ async def download_preview(http, beatmapset_id):
 
 
 class SongGuess:
-    def __init__(self, context, record_judgment=None, record_local_win=None):
+    def __init__(self, context, record_judgment=None, record_local_win=None, record_round=None):
         self.context = context
         self.record_judgment = record_judgment
         self.record_local_win = record_local_win
+        self.record_round = record_round
         self._active_model_judgments = 0
         self.rounds: dict[str, Round] = {}
         self.timers: set[asyncio.Task] = set()
@@ -215,7 +232,7 @@ class SongGuess:
     async def start(self, client, caller, event, session, mode, model_enabled, *, chart=False):
         if session in self.rounds:
             return "本群已有一局猜歌正在准备或进行中。"
-        game = self.rounds[session] = Round(event.get_sender_id())
+        game = self.rounds[session] = Round(event.get_sender_id(), owner_name=event.get_sender_name())
         started = False
         try:
             async with asyncio.timeout(120 if chart else 30):
@@ -235,6 +252,7 @@ class SongGuess:
                 return None
             self.seen(session).add(song.id)
             game.song, game.source = song, source
+            game.opened = perf_counter()
             game.deadline = asyncio.get_running_loop().time() + ROUND_SECONDS
             game.timer = asyncio.create_task(self.expire(session, game))
             self.timers.add(game.timer)
@@ -261,6 +279,11 @@ class SongGuess:
             game.timer.cancel()
         return True
 
+    def log_round(self, session, game, winner=None, *, expired=False):
+        if self.record_round is not None:
+            self.record_round(session, time(), game.owner, game.owner_name, game.song.name,
+                              winner, expired, game.attempts)
+
     def reveal(self, game, message):
         song = game.song
         artist = song.artist_unicode or song.artist
@@ -271,6 +294,7 @@ class SongGuess:
     async def expire(self, session, game):
         await asyncio.sleep(max(0, game.deadline - asyncio.get_running_loop().time()))
         if self.finish(session, game):
+            self.log_round(session, game, expired=True)
             try:
                 message = MessageChain([Plain(self.reveal(game, "猜歌超时。"))])
                 sent = await self.context.send_message(session, message)
@@ -304,7 +328,10 @@ class SongGuess:
 
     def accept_local_answer(self, session, event, answer):
         game = self.active(session)
-        if game and game.song.matches(answer) and self.finish(session, game):
+        score = game.song.local_score(answer) if game else None
+        if score is not None and self.finish(session, game):
+            self.log_round(session, game, (event.get_sender_id(), event.get_sender_name(), score,
+                                          round((perf_counter() - game.opened) * 1000), game.hints))
             return self.reveal(game, f"🎉 {event.get_sender_name()} 答对了！")
         return None
 
@@ -326,6 +353,8 @@ class SongGuess:
             return "本局的模型判定次数已用完，可以继续直接发曲名。"
         if self._active_model_judgments >= MAX_CONCURRENT_MODEL_JUDGMENTS:
             return "模型判定正忙，请稍后再试。"
+        elapsed = round((perf_counter() - game.opened) * 1000)
+        hints = game.hints
         self._active_model_judgments += 1
         game.judged.add(key)
         provider = endpoint = model = ""
@@ -379,7 +408,12 @@ class SongGuess:
         finally:
             self._active_model_judgments -= 1
         active = self.active(session) is game
+        if active and verdict in {"SAME", "DIFFERENT"}:
+            similarity = song.similarity(answer) if verdict == "SAME" else 0
+            game.attempts.append((event.get_sender_id(), event.get_sender_name(), outcome, elapsed, similarity))
         settled = active and verdict == "SAME" and self.finish(session, game)
+        if settled:
+            self.log_round(session, game, (event.get_sender_id(), event.get_sender_name(), None, elapsed, hints))
         self._record_model(event, timestamp, provider, endpoint, model, answer, song.name,
                            outcome, bool(settled), started, response)
         if not active:
