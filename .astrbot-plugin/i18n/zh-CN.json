@@ -1,0 +1,14 @@
+{
+  "pages": {
+    "usage": {
+      "title": "小薄绿调用统计",
+      "description": "指令用量、群活跃和模型判定记录"
+    }
+  },
+  "views": {
+    "usage": {
+      "title": "小薄绿调用统计",
+      "description": "指令用量、群活跃和模型判定记录"
+    }
+  }
+}

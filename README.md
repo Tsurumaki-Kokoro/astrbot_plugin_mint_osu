@@ -210,3 +210,24 @@ python -m unittest discover -s tests -v
 [GNU AGPL v3](LICENSE)。
 
 ![Counter](https://count.getloli.com/@mintosu?theme=original-new&padding=7&offset=0&align=top&scale=1&pixelated=1&darkmode=auto)
+
+## 调用统计与模型判定
+
+重载插件后，在 AstrBot 4.29 管理面板左侧的「扩展功能」打开「小薄绿调用统计」。AstrBot 4.28 的入口位于侧栏的插件 WebUI 分组。
+
+看板以北京时间展示指令排行、群调用占比、小时热力图、活跃群、P95 耗时和技术失败率。群调用占比以当前筛选范围内的群聊指令为分母。点击群排行中的群 ID 可查看单群，清空群 ID 可恢复全群范围。统计数据从功能启用时开始采集。
+
+调用总览的「查询模型判定记录」会打开独立查询页，可查询最近 7 天已发起的猜歌模型请求，包括提交答案、标准曲名、判定结果、是否结算为答对、耗时、用量和估算费用。过期后清理逐条记录，保留按小时汇总所需的用量和结果。插件数据目录中的 `usage_stats.sqlite3` 保存这些统计。
+
+费用按照内置的官方 API 单价估算，页面显示计价覆盖率。使用代理或自定义计费时，在插件配置的「模型用量估算自定义单价」里按 AstrBot 的供应商实例 ID 填写每百万 Token 的费率，例如：
+
+```json
+{
+  "my-provider": {
+    "currency": "CNY",
+    "input": 1,
+    "cached_input": 0.1,
+    "output": 2
+  }
+}
+```

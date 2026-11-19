@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>小薄绿调用统计</title>
+  <link rel="stylesheet" href="app.css">
+  <script src="app.js" defer></script>
+</head>
+<body>
+<main>
+  <header class="masthead">
+    <h1>小薄绿调用统计</h1>
+    <p id="coverage">北京时间 UTC+8</p>
+  </header>
+  <form id="filters" class="filters">
+    <label>统计范围<select name="days"><option value="1">今日</option><option value="7" selected>近 7 天</option><option value="30">近 30 天</option></select></label>
+    <label>平台实例<input name="platform" list="platforms" placeholder="全部平台实例" maxlength="256"></label>
+    <datalist id="platforms"></datalist>
+    <label>群 ID<input name="group" list="groups" placeholder="全部会话" maxlength="256"></label>
+    <datalist id="groups"></datalist>
+    <label class="check"><input type="checkbox" id="private-chat">仅私聊</label>
+    <button type="submit">刷新统计</button>
+  </form>
+  <section id="overview" aria-busy="true">
+    <p id="summary-status" role="status"></p>
+    <dl id="metrics" class="metrics"></dl>
+    <section class="timeline">
+      <h2>活跃时段</h2>
+      <p class="caption">按星期与小时汇总。选择时段可查看该时段的调用排行。</p>
+      <button id="clear-time" type="button" hidden></button>
+      <div id="heatmap" class="scroll"></div>
+    </section>
+    <div class="columns">
+      <section>
+        <h2>每日调用</h2>
+        <div id="daily" class="daily"></div>
+      </section>
+      <section>
+        <h2>热门指令</h2>
+        <div id="commands" class="scroll"></div>
+      </section>
+    </div>
+    <section>
+      <h2>群活跃排行</h2>
+      <p class="caption">群调用占比以所选范围内的群聊调用为分母，群排行按调用次数排序。</p>
+      <div id="group-ranking" class="scroll"></div>
+    </section>
+    <section>
+      <h2>模型用量与判定收益</h2>
+      <p><a href="judgments.html">查询模型判定记录</a></p>
+      <div id="models" class="scroll"></div>
+      <details id="pricing-panel">
+        <summary>估算价格与来源</summary>
+        <div id="pricing" class="scroll"></div>
+      </details>
+    </section>
+  </section>
+</main>
+</body>
+</html>

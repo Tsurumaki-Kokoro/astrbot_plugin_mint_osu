@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>小薄绿模型判定记录</title>
+  <link rel="stylesheet" href="app.css">
+  <script src="app.js" defer></script>
+</head>
+<body>
+<main>
+  <header class="masthead">
+    <h1>小薄绿模型判定记录</h1>
+    <a href="index.html">返回调用总览</a>
+    <p>北京时间 UTC+8</p>
+  </header>
+  <form id="filters" class="filters">
+    <label>统计范围<select name="days"><option value="1">今日</option><option value="7" selected>近 7 天</option></select></label>
+    <label>平台实例<input name="platform" list="platforms" placeholder="全部平台实例" maxlength="256"></label>
+    <datalist id="platforms"></datalist>
+    <label>群 ID<input name="group" list="groups" placeholder="全部会话" maxlength="256"></label>
+    <datalist id="groups"></datalist>
+    <label>模型<input name="model" list="model-options" placeholder="全部模型" maxlength="256"></label>
+    <datalist id="model-options"></datalist>
+    <label>判定结果<select name="result">
+      <option value="">全部结果</option><option value="same">相符</option><option value="different">不符</option>
+      <option value="unsure">无法确认</option><option value="timeout">超时</option><option value="error">请求失败</option>
+      <option value="invalid">响应无效</option><option value="cancelled">已取消</option>
+    </select></label>
+    <button type="submit">查询记录</button>
+  </form>
+  <section id="judgments" aria-busy="true">
+    <p class="caption">明细保留最近 7 天。玩家答案和标准曲名可直接对照。</p>
+    <p id="judgment-status" role="status"></p>
+    <div id="records" class="scroll"></div>
+    <nav id="pagination" aria-label="记录分页" hidden>
+      <button id="previous" type="button">上一页</button>
+      <span id="page-info"></span>
+      <button id="next" type="button">下一页</button>
+    </nav>
+  </section>
+</main>
+</body>
+</html>
