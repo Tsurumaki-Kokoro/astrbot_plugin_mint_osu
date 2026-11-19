@@ -180,6 +180,7 @@ class SongGuessTests(unittest.IsolatedAsyncioTestCase):
         self.context.llm_generate.assert_not_awaited()
 
     async def test_exact_answer_wins_while_model_is_pending(self):
+        self.plugin._stats = main.UsageStats(":memory:")
         await self.open_round()
         started, release = asyncio.Event(), asyncio.Event()
 
@@ -195,6 +196,10 @@ class SongGuessTests(unittest.IsolatedAsyncioTestCase):
         release.set()
         self.assertIsNone(await pending)
         self.context.send_message.assert_not_awaited()
+        rows = self.plugin._stats.judgments(7)["items"]
+        self.assertEqual(len(rows), 1)
+        self.assertEqual((rows[0]["answer"], rows[0]["title"]), ("坏苹果", self.song.name))
+        self.assertEqual((rows[0]["result"], rows[0]["settled"]), ("same", 0))
 
     async def test_five_model_judgments_share_capacity_and_only_one_wins(self):
         await self.open_round()

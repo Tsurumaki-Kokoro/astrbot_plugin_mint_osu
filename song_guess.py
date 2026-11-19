@@ -1,5 +1,6 @@
 """Run one song guessing round per OneBot group."""
 import asyncio
+from time import perf_counter, time
 import base64
 from dataclasses import dataclass, field
 from datetime import date
@@ -131,8 +132,10 @@ async def download_preview(http, beatmapset_id):
 
 
 class SongGuess:
-    def __init__(self, context):
+    def __init__(self, context, record_judgment=None, record_local_win=None):
         self.context = context
+        self.record_judgment = record_judgment
+        self.record_local_win = record_local_win
         self._active_model_judgments = 0
         self.rounds: dict[str, Round] = {}
         self.timers: set[asyncio.Task] = set()
@@ -303,6 +306,8 @@ class SongGuess:
             return "本群没有正在答题的猜歌。"
         result = self.accept_local_answer(session, event, answer)
         if result:
+            if self.record_local_win:
+                self.record_local_win(event)
             return result
         if not model_enabled:
             return "这个答案没有匹配到曲名，模型辅助判定未开启。"
@@ -315,12 +320,32 @@ class SongGuess:
             return "模型判定正忙，请稍后再试。"
         self._active_model_judgments += 1
         game.judged.add(key)
+        provider = endpoint = model = ""
+        response = None
+        outcome = "error"
+        started = None
+        timestamp = time()
+        song = game.song
         try:
             async with asyncio.timeout(8):
                 provider = (model_provider_id or "").strip()
                 if not provider:
                     provider = await self.context.get_current_chat_provider_id(event.unified_msg_origin)
-                song = game.song
+                if self.record_judgment and getattr(self.context, "provider_manager", None):
+                    try:
+                        instance = await self.context.provider_manager.get_provider_by_id(provider)
+                        if instance is not None:
+                            endpoint = instance.provider_config.get("api_base") or {
+                                "ProviderAnthropic": "anthropic",
+                                "ProviderGoogleGenAI": "google",
+                                "ProviderOpenAIOfficial": "openai",
+                                "ProviderOpenAIResponses": "openai",
+                            }.get(type(instance).__name__, "")
+                            model = instance.get_model()
+                    except Exception as exc:
+                        logger.debug(f"Song judge model metadata unavailable: {type(exc).__name__}")
+                started = perf_counter()
+                timestamp = time()
                 response = await self.context.llm_generate(
                     chat_provider_id=provider,
                     system_prompt=MODEL_PROMPT,
@@ -329,20 +354,41 @@ class SongGuess:
                                        "artist": song.artist_unicode or song.artist}, ensure_ascii=False),
                 )
                 verdict = (response.completion_text or "").strip()
+                outcome = verdict.lower() if verdict in {"SAME", "DIFFERENT", "UNSURE"} else "invalid"
+                raw = getattr(response, "raw_completion", None)
+                reported_model = getattr(raw, "model", None) or getattr(raw, "model_version", None)
+                if isinstance(reported_model, str) and reported_model:
+                    model = reported_model
+        except asyncio.CancelledError:
+            self._record_model(event, timestamp, provider, endpoint, model, answer, song.name,
+                               "cancelled", False, started, response)
+            raise
         except Exception as exc:
             logger.warning(f"Song guess model judge unavailable: {type(exc).__name__}")
             verdict = None
+            if isinstance(exc, TimeoutError):
+                outcome = "timeout"
         finally:
             self._active_model_judgments -= 1
-        if self.active(session) is not game:
+        active = self.active(session) is game
+        settled = active and verdict == "SAME" and self.finish(session, game)
+        self._record_model(event, timestamp, provider, endpoint, model, answer, song.name,
+                           outcome, bool(settled), started, response)
+        if not active:
             return None
-        if verdict == "SAME" and self.finish(session, game):
+        if settled:
             return self.reveal(game, f"🎉 {event.get_sender_name()} 答对了！")
         if verdict == "DIFFERENT":
             return "这次没猜中，可以继续答题。"
         if verdict == "UNSURE":
             return "模型无法确认这个答案，可以试试其他写法。"
         return "模型暂时无法判定，可以继续直接发曲名。"
+
+    def _record_model(self, event, timestamp, provider, endpoint, model, answer, title,
+                      outcome, settled, started, response):
+        if self.record_judgment is not None and started is not None:
+            self.record_judgment(event, timestamp, provider or "", endpoint, model, answer, title,
+                                 outcome, settled, round((perf_counter() - started) * 1000), response)
 
     async def close(self):
         self.rounds.clear()

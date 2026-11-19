@@ -2,12 +2,14 @@
 import asyncio
 import re
 import json
+from time import perf_counter, time
 from .tools import update_qq_menu, update_qq_panels
 
 import aiohttp
 from astrbot.api import AstrBotConfig, logger
 from astrbot.api.event import AstrMessageEvent, filter
 from astrbot.api.message_components import At, AtAll, Plain, Image, Video
+from astrbot.api.web import json_response, request
 from astrbot.api.star import Context, Star, StarTools, register
 from astrbot.core.star.star import star_map
 
@@ -19,6 +21,8 @@ from .extras import avatar_archive, group_ranking, save_attachment
 from .subscriptions import Subscriptions
 from .player_subscriptions import PlayerSubscriptions
 from .player_features import compare_scores
+from .usage_stats import UsageStats
+from . import pricing
 from .song_guess import COMMANDS as SONG_GUESS_COMMANDS, SongGuess, group_session
 
 SONG_GUESS_HELP = "群内猜歌：猜歌 [:模式]、谱面猜歌 [:模式]、猜歌提示、作答 歌名、取消猜歌"
@@ -197,10 +201,22 @@ class MintOsuPlugin(Star):
         self._client: MintClient | None = None
         self._watch: Subscriptions | None = None
         self._player_watch: PlayerSubscriptions | None = None
-        self._song_guess = SongGuess(context)
+        self._stats = None
+        self._stats_cleanup = None
+        self._song_guess = SongGuess(context, self._record_judgment, self._record_local_win)
         self._qq_publish_lock = asyncio.Lock()
 
     async def initialize(self):
+        try:
+            path = StarTools.get_data_dir("astrbot_plugin_mint_osu") / "usage_stats.sqlite3"
+            self._stats = UsageStats(path)
+            self._stats_cleanup = asyncio.create_task(self._prune_statistics())
+        except Exception as exc:
+            logger.warning(f"Mint usage statistics unavailable: {type(exc).__name__}")
+        for name, handler in (("summary", self._usage_summary), ("judgments", self._usage_judgments)):
+            self.context.register_web_api(
+                f"/astrbot_plugin_mint_osu/stats/{name}", handler, ["GET"], "Mint usage statistics"
+            )
         # Leave help usable when an administrator has not configured the API yet.
         try:
             self._client = self._create_client()
@@ -208,6 +224,80 @@ class MintOsuPlugin(Star):
             self._player_subscriptions().start()
         except ValueError as exc:
             logger.warning(str(exc))
+
+    async def _prune_statistics(self):
+        while True:
+            await asyncio.sleep(300)
+            try:
+                self._stats.prune()
+            except Exception as exc:
+                logger.warning(f"Mint usage cleanup failed: {type(exc).__name__}")
+
+    @staticmethod
+    def _stats_dimensions(event):
+        return event.get_platform_id(), str(event.get_group_id() or "")
+
+    def _record_command(self, event, name, result, timestamp, started):
+        if self._stats is None:
+            return
+        try:
+            self._stats.command(timestamp, *self._stats_dimensions(event), name, result,
+                                round((perf_counter() - started) * 1000))
+        except Exception as exc:
+            logger.warning(f"Mint command statistics write failed: {type(exc).__name__}")
+
+    def _record_local_win(self, event):
+        self._record_command(event, "local_win", "ok", time(), perf_counter())
+
+    def _record_judgment(self, event, timestamp, provider_id, endpoint, model, answer, title,
+                         result, settled, duration_ms, response):
+        if self._stats is None:
+            return
+        usage = price = None
+        try:
+            usage = pricing.extract_usage(response, endpoint) if response is not None else None
+            overrides = json.loads(self.config.get("usage_price_overrides") or "{}")
+            price = pricing.estimate(endpoint, model, usage, timestamp, overrides.get(provider_id)) if usage else None
+        except Exception as exc:
+            logger.warning(f"Mint judgment pricing unavailable: {type(exc).__name__}")
+        try:
+            self._stats.judgment(timestamp, *self._stats_dimensions(event), provider_id, model,
+                                 answer, title, result, settled, duration_ms, usage, price)
+        except Exception as exc:
+            logger.warning(f"Mint judgment statistics write failed: {type(exc).__name__}")
+
+    async def _usage_summary(self):
+        return self._usage_response(with_details=False)
+
+    async def _usage_judgments(self):
+        return self._usage_response(with_details=True)
+
+    def _usage_response(self, *, with_details):
+        if self._stats is None:
+            return json_response({"message": "统计数据库不可用。"}, status_code=503)
+        query = request.query
+        try:
+            days = int(query.get("days", "7"))
+            page = int(query.get("page", "1"))
+            hour = int(query.get("hour")) if query.get("hour") is not None else None
+            weekday = int(query.get("weekday")) if query.get("weekday") is not None else None
+            if (hour is not None and not 0 <= hour <= 23) or (weekday is not None and not 0 <= weekday <= 6):
+                raise ValueError
+            if not 1 <= days <= 30 or not 1 <= page <= 1_000_000:
+                raise ValueError
+        except ValueError:
+            return json_response({"message": "日期范围或页码无效。"}, status_code=400)
+        scope = (days, query.get("platform", ""), query.get("group", ""))
+        if with_details:
+            data = self._stats.judgments(*scope, query.get("model", ""), query.get("result", ""), page,
+                                         hour=hour, weekday=weekday)
+        else:
+            data = self._stats.summary(*scope, hour=hour, weekday=weekday)
+            data["pricing"] = {
+                "version": pricing.VERSION, "sources": pricing.SOURCES,
+                "catalog": pricing.CATALOG, "long_context": pricing.LONG_CONTEXT,
+            }
+        return json_response(data, headers={"Cache-Control": "no-store"})
 
     def _subscriptions(self):
         if self._watch is None:
@@ -235,6 +325,9 @@ class MintOsuPlugin(Star):
     async def handle_command(self, event: AstrMessageEvent):
         """osu! 小薄绿：资料、成绩、BP 分析、历史、谱面与绑定命令；minthelp 查看用法。"""
         command = None
+        command_name = None
+        result_kind = "ok"
+        timestamp, started = time(), perf_counter()
         try:
             text = event.get_extra("mint_osu_command_text")
             if text is None:
@@ -242,7 +335,10 @@ class MintOsuPlugin(Star):
                 text = normalized_command(event, self.config, framework_config)
             if text is None:
                 return
+            matched = COMMAND_PATTERN.match(text)
+            command_name = matched[1].lower() if matched else None
             command = parse_command(text, mentioned_users(event))
+            command_name = command.name
             if command.name in SONG_GUESS_COMMANDS:
                 session = group_session(event)
                 if session is None:
@@ -336,17 +432,26 @@ class MintOsuPlugin(Star):
                 message = {"bind": "绑定成功。可使用 statme 查询资料卡。", "unbind": "已解除绑定。", "mode": "默认模式已更新。"}[command.name]
                 yield event.plain_result(message)
         except ValueError as exc:
+            result_kind = "business"
             yield event.plain_result(str(exc))
         except MintAPIError as exc:
+            result_kind = "technical" if exc.status >= 500 or exc.status in (401, 403, 429) else "business"
             logger.warning(f"MintAPI request failed: HTTP {exc.status}")
             yield event.plain_result(error_message(command, exc.status, exc.detail, exc.retry_after))
         except (aiohttp.ClientError, asyncio.TimeoutError):
+            result_kind = "technical"
             yield event.plain_result("无法连接 MintAPI 或请求超时，请稍后重试。")
+        except asyncio.CancelledError:
+            result_kind = "cancelled"
+            raise
         except Exception as exc:
+            result_kind = "technical"
             # Do not log request URLs, payloads or exception text that may include secrets.
             logger.error(f"osu! 小薄绿 command failed: {type(exc).__name__}")
             yield event.plain_result("命令处理失败，请管理员检查插件日志。")
         finally:
+            if command_name:
+                self._record_command(event, command_name, result_kind, timestamp, started)
             event.stop_event()
 
     async def _handle_song_guess(self, command, event, session):
@@ -374,6 +479,7 @@ class MintOsuPlugin(Star):
         session = group_session(event)
         result = self._song_guess.accept_local_answer(session, event, command_text(event))
         if result:
+            self._record_local_win(event)
             try:
                 yield event.plain_result(result)
             finally:
@@ -415,6 +521,13 @@ class MintOsuPlugin(Star):
 
     async def terminate(self):
         await self._song_guess.close()
+        if self._stats_cleanup is not None:
+            self._stats_cleanup.cancel()
+            await asyncio.gather(self._stats_cleanup, return_exceptions=True)
+            self._stats_cleanup = None
+        if self._stats is not None:
+            self._stats.close()
+            self._stats = None
         if self._player_watch is not None:
             await self._player_watch.close()
             self._player_watch = None

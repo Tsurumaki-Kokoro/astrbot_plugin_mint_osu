@@ -26,6 +26,12 @@
     "default": "",
     "hint": "从 AstrBot 已配置的聊天模型中选择。留空时使用当前会话的聊天模型。"
   },
+  "usage_price_overrides": {
+    "description": "模型用量估算自定义单价",
+    "type": "text",
+    "default": "{}",
+    "hint": "JSON 对象，按 AstrBot 供应商实例 ID 配置。单价以每百万 Token 计，例如 {\"my-provider\": {\"currency\": \"CNY\", \"input\": 1, \"cached_input\": 0.1, \"output\": 2}}。"
+  },
   "api_base_url": {
     "description": "MintAPI 地址",
     "type": "string",
