@@ -193,7 +193,7 @@ class SongAnswerFilter(filter.CustomFilter):
         return game.song.matches(command_text(event))
 
 
-@register("astrbot_plugin_mint_osu", "TRANCE", "通过 MintAPI 查询 osu! 资料、成绩与谱面", "1.3.0")
+@register("astrbot_plugin_mint_osu", "TRANCE", "通过 MintAPI 查询 osu! 资料、成绩与谱面", "1.3.1")
 class MintOsuPlugin(Star):
     def __init__(self, context: Context, config: AstrBotConfig):
         super().__init__(context)
