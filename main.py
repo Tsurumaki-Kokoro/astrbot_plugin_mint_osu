@@ -24,7 +24,11 @@ from .player_features import compare_scores
 from .usage_stats import UsageStats
 from .song_leaderboard import SongLeaderboard
 from . import pricing
-from .song_guess import COMMANDS as SONG_GUESS_COMMANDS, SongGuess, group_session
+from .song_guess import COMMANDS as SONG_GUESS_COMMANDS
+from .song_guess import (
+    DEFAULT_COOLDOWN_SECONDS, DEFAULT_MODEL_RATE_LIMIT, DEFAULT_WRONG_ANSWER_LIMIT,
+    AnswerCooldown, SongGuess, group_session,
+)
 
 SONG_GUESS_HELP = "群内猜歌：猜歌 [:模式]、谱面猜歌 [:模式]、猜歌提示、作答 歌名、取消猜歌、猜歌榜 [上周]"
 
@@ -193,7 +197,7 @@ class SongAnswerFilter(filter.CustomFilter):
         return game.song.matches(command_text(event))
 
 
-@register("astrbot_plugin_mint_osu", "TRANCE", "通过 MintAPI 查询 osu! 资料、成绩与谱面", "1.3.1")
+@register("astrbot_plugin_mint_osu", "TRANCE", "通过 MintAPI 查询 osu! 资料、成绩与谱面", "1.3.2")
 class MintOsuPlugin(Star):
     def __init__(self, context: Context, config: AstrBotConfig):
         super().__init__(context)
@@ -477,10 +481,24 @@ class MintOsuPlugin(Star):
             return self._song_board.render(session, previous=command.query == "上周")
         model_enabled = self.config.get("song_guess_model_enabled", True)
         if command.name == "作答":
+            model_rate_limit = None
+            answer_cooldown = None
+            mode = self.config.get("song_guess_model_rate_limit_mode", "沿用旧配置")
+            if mode == "按判错次数":
+                wrong_limit = self.config.get("song_guess_model_wrong_answer_limit", DEFAULT_WRONG_ANSWER_LIMIT)
+                seconds = self.config.get("song_guess_model_cooldown_seconds", DEFAULT_COOLDOWN_SECONDS)
+                answer_cooldown = AnswerCooldown(max(1, wrong_limit), max(1, seconds))
+            elif mode == "按调用次数" or (
+                mode == "沿用旧配置" and self.config.get("song_guess_model_rate_limit_enabled", False)
+            ):
+                configured_limit = self.config.get("song_guess_model_rate_limit_per_minute", DEFAULT_MODEL_RATE_LIMIT)
+                model_rate_limit = max(1, configured_limit)
             return await self._song_guess.answer(
                 session, event, command.query,
                 model_enabled=model_enabled,
                 model_provider_id=self.config.get("song_guess_model_provider_id", ""),
+                model_rate_limit=model_rate_limit,
+                answer_cooldown=answer_cooldown,
             )
         if command.name == "猜歌提示":
             return self._song_guess.hint(session)

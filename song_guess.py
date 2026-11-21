@@ -1,11 +1,13 @@
 """Run one song guessing round per OneBot group."""
 import asyncio
-from time import perf_counter, time
+from time import monotonic, perf_counter, time
 import base64
+from collections import deque
 from dataclasses import dataclass, field
 from datetime import date
 from difflib import SequenceMatcher
 import json
+from math import ceil
 import random
 import re
 import unicodedata
@@ -24,6 +26,11 @@ COMMANDS = {"猜歌", "谱面猜歌", "猜歌提示", "取消猜歌", "作答", 
 ONEBOT = {"aiocqhttp", "onebot", "onebot_v11", "qq"}
 ROUND_SECONDS = 300
 MAX_CONCURRENT_MODEL_JUDGMENTS = 5
+MODEL_RATE_WINDOW_SECONDS = 60
+DEFAULT_MODEL_RATE_LIMIT = 3
+DEFAULT_WRONG_ANSWER_LIMIT = 3
+DEFAULT_COOLDOWN_SECONDS = 60
+REPEATED_ANSWER_LIMIT = 3
 PREVIEW_MODES = ("standard", "taiko", "ctb", "mania")
 TITLE_PUNCTUATION = str.maketrans("‘’“”‐‑–—", "''\"\"----")
 EDGE_PUNCTUATION = " !?。.…"
@@ -147,6 +154,32 @@ class Round:
     owner_name: str = ""
     opened: float = 0
     attempts: list[tuple] = field(default_factory=list)
+    submissions: dict[tuple[str, str], deque[float]] = field(default_factory=dict)
+
+
+@dataclass(frozen=True)
+class AnswerCooldown:
+    wrong_limit: int
+    seconds: int
+
+
+@dataclass
+class PlayerCooldown:
+    last_activity: float
+    until: float = 0
+    wrong_answers: deque[float] = field(default_factory=deque)
+
+    def remaining(self, now: float) -> int:
+        return max(0, ceil(self.until - now))
+
+    def start(self, now: float, seconds: int):
+        self.until = now + seconds
+        self.wrong_answers.clear()
+
+
+def trim_model_window(attempts: deque[float], now: float):
+    while attempts and attempts[0] <= now - MODEL_RATE_WINDOW_SECONDS:
+        attempts.popleft()
 
 
 async def download_preview(http, beatmapset_id):
@@ -171,6 +204,9 @@ class SongGuess:
         self.record_local_win = record_local_win
         self.record_round = record_round
         self._active_model_judgments = 0
+        self._model_calls_by_user: dict[str, deque[float]] = {}
+        self._player_cooldowns: dict[str, PlayerCooldown] = {}
+        self._pending_cooldown_users: set[str] = set()
         self.rounds: dict[str, Round] = {}
         self.timers: set[asyncio.Task] = set()
         self.history_day = date.today()
@@ -347,12 +383,46 @@ class SongGuess:
         game = self.active(session)
         score = game.song.local_score(answer) if game else None
         if score is not None and self.finish(session, game):
+            self._clear_player_cooldown(event.get_sender_id())
             self.log_round(session, game, (event.get_sender_id(), event.get_sender_name(), score,
                                           round((perf_counter() - game.opened) * 1000), game.hints))
             return self.reveal(game, f"🎉 {event.get_sender_name()} 答对了！")
         return None
 
-    async def answer(self, session, event, answer, model_enabled, *, model_provider_id=""):
+    def _reserve_model_call(self, user_id: str, limit: int) -> int:
+        now = monotonic()
+        cutoff = now - MODEL_RATE_WINDOW_SECONDS
+        expired_users = [user for user, calls in self._model_calls_by_user.items()
+                         if calls[-1] <= cutoff]
+        for user in expired_users:
+            del self._model_calls_by_user[user]
+        calls = self._model_calls_by_user.setdefault(user_id, deque())
+        trim_model_window(calls, now)
+        if len(calls) >= limit:
+            return ceil(calls[-limit] - cutoff)
+        calls.append(now)
+        return 0
+
+    def _clear_player_cooldown(self, user_id: str):
+        if self._player_cooldowns.pop(user_id, None) is None:
+            return
+        for game in self.rounds.values():
+            keys = [key for key in game.submissions if key[0] == user_id]
+            for key in keys:
+                del game.submissions[key]
+
+    def _player_cooldown(self, user_id: str, now: float) -> PlayerCooldown:
+        expired = [user for user, state in self._player_cooldowns.items()
+                   if state.last_activity <= now - MODEL_RATE_WINDOW_SECONDS
+                   and state.until <= now and user not in self._pending_cooldown_users]
+        for user in expired:
+            del self._player_cooldowns[user]
+        state = self._player_cooldowns.setdefault(user_id, PlayerCooldown(now))
+        state.last_activity = now
+        return state
+
+    async def answer(self, session, event, answer, model_enabled, *,
+                     model_provider_id="", model_rate_limit=None, answer_cooldown: AnswerCooldown | None = None):
         game = self.active(session)
         if not game:
             return "本群没有正在答题的猜歌。"
@@ -364,16 +434,40 @@ class SongGuess:
         if not model_enabled:
             return "这个答案没有匹配到曲名，模型辅助判定未开启。"
         key = normalize(answer)
+        user_id = event.get_sender_id()
+        player_cooldown = None
+        if answer_cooldown is not None:
+            now = monotonic()
+            player_cooldown = self._player_cooldown(user_id, now)
+            wait = player_cooldown.remaining(now)
+            if wait:
+                return f"你的猜歌模型判定正在冷却，请在 {wait} 秒后再试。"
+            expired = [submission for submission, attempts in game.submissions.items()
+                       if attempts[-1] <= now - MODEL_RATE_WINDOW_SECONDS]
+            for submission in expired:
+                del game.submissions[submission]
+            submission = (user_id, key)
+            attempts = game.submissions.setdefault(submission, deque())
+            trim_model_window(attempts, now)
+            attempts.append(now)
+            if len(attempts) >= REPEATED_ANSWER_LIMIT:
+                del game.submissions[submission]
+                player_cooldown.start(now, answer_cooldown.seconds)
+                return f"同一答案重复提交过于频繁，模型判定冷却 {answer_cooldown.seconds} 秒。"
         if key in game.judged:
             return "本局已经判定过这个答案。"
         if len(game.judged) >= 20:
             return "本局的模型判定次数已用完，可以继续直接发曲名。"
+        if player_cooldown is not None and user_id in self._pending_cooldown_users:
+            return "你的上一条答案正在判定，请稍后再试。"
         if self._active_model_judgments >= MAX_CONCURRENT_MODEL_JUDGMENTS:
             return "模型判定正忙，请稍后再试。"
         elapsed = round((perf_counter() - game.opened) * 1000)
         hints = game.hints
         self._active_model_judgments += 1
         game.judged.add(key)
+        if player_cooldown is not None:
+            self._pending_cooldown_users.add(user_id)
         provider = endpoint = model = ""
         response = None
         outcome = "error"
@@ -398,6 +492,20 @@ class SongGuess:
                             model = instance.get_model()
                     except Exception as exc:
                         logger.debug(f"Song judge model metadata unavailable: {type(exc).__name__}")
+                if model_rate_limit is not None:
+                    wait = self._reserve_model_call(user_id, model_rate_limit)
+                    if wait:
+                        game.judged.discard(key)
+                        return f"你的猜歌模型判定次数已达上限，请在 {wait} 秒后再试。"
+                if player_cooldown is not None:
+                    if self.active(session) is not game:
+                        return None
+                    current_cooldown = self._player_cooldowns.get(user_id)
+                    if current_cooldown is not None:
+                        wait = current_cooldown.remaining(monotonic())
+                        if wait:
+                            game.judged.discard(key)
+                            return f"你的猜歌模型判定正在冷却，请在 {wait} 秒后再试。"
                 started = perf_counter()
                 timestamp = time()
                 response = await self.context.llm_generate(
@@ -424,12 +532,15 @@ class SongGuess:
                 outcome = "timeout"
         finally:
             self._active_model_judgments -= 1
+            if player_cooldown is not None:
+                self._pending_cooldown_users.discard(user_id)
         active = self.active(session) is game
         if active and verdict in {"SAME", "DIFFERENT"}:
             similarity = song.similarity(answer) if verdict == "SAME" else 0
             game.attempts.append((event.get_sender_id(), event.get_sender_name(), outcome, elapsed, similarity))
         settled = active and verdict == "SAME" and self.finish(session, game)
         if settled:
+            self._clear_player_cooldown(user_id)
             self.log_round(session, game, (event.get_sender_id(), event.get_sender_name(), None, elapsed, hints))
         self._record_model(event, timestamp, provider, endpoint, model, answer, song.name,
                            outcome, bool(settled), started, response)
@@ -438,6 +549,15 @@ class SongGuess:
         if settled:
             return self.reveal(game, f"🎉 {event.get_sender_name()} 答对了！")
         if verdict == "DIFFERENT":
+            if answer_cooldown is not None and self._player_cooldowns.get(user_id) is player_cooldown:
+                now = monotonic()
+                if player_cooldown.until <= now:
+                    player_cooldown.last_activity = now
+                    trim_model_window(player_cooldown.wrong_answers, now)
+                    player_cooldown.wrong_answers.append(now)
+                    if len(player_cooldown.wrong_answers) >= answer_cooldown.wrong_limit:
+                        player_cooldown.start(now, answer_cooldown.seconds)
+                        return f"这次没猜中。模型判定冷却 {answer_cooldown.seconds} 秒。"
             return "这次没猜中，可以继续答题。"
         if verdict == "UNSURE":
             return "模型无法确认这个答案，可以试试其他写法。"
@@ -452,6 +572,8 @@ class SongGuess:
     async def close(self):
         self.rounds.clear()
         self.history.clear()
+        self._model_calls_by_user.clear()
+        self._player_cooldowns.clear()
         timers = tuple(self.timers)
         for task in timers:
             task.cancel()

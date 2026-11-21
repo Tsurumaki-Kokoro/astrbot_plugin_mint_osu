@@ -19,6 +19,42 @@
     "default": true,
     "hint": "仅当群友使用 /作答 且答案未直接匹配时调用聊天模型。"
   },
+  "song_guess_model_rate_limit_mode": {
+    "description": "猜歌模型限频模式",
+    "type": "string",
+    "default": "沿用旧配置",
+    "options": [
+      "沿用旧配置",
+      "关闭",
+      "按调用次数",
+      "按判错次数"
+    ],
+    "hint": "两种限频模式互斥。按判错次数也会限制重复提交。沿用旧配置时，由旧版按用户限频开关决定是否按调用次数限频。"
+  },
+  "song_guess_model_rate_limit_enabled": {
+    "description": "旧版猜歌模型判定按用户限频",
+    "type": "bool",
+    "default": false,
+    "hint": "仅当限频模式为「沿用旧配置」时读取。开启后按模型调用次数限频。"
+  },
+  "song_guess_model_rate_limit_per_minute": {
+    "description": "每位用户每分钟的猜歌模型判定上限",
+    "type": "int",
+    "default": 3,
+    "hint": "按调用次数限频时生效。每位用户跨群共用滚动 60 秒限额，最低 1 次，超额提交时提示等待时间。"
+  },
+  "song_guess_model_wrong_answer_limit": {
+    "description": "每位用户每分钟的猜歌模型判错上限",
+    "type": "int",
+    "default": 3,
+    "hint": "仅在按判错次数限频时生效，最低 1 次。模型明确判错才计入，达到上限时开始冷却。"
+  },
+  "song_guess_model_cooldown_seconds": {
+    "description": "猜歌模型判定冷却时长（秒）",
+    "type": "int",
+    "default": 60,
+    "hint": "按判错次数限频时，判错达到上限或同局 60 秒内第三次提交同一答案都会触发冷却，最低 1 秒。"
+  },
   "song_guess_model_provider_id": {
     "description": "猜歌判定模型",
     "type": "string",

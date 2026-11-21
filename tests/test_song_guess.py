@@ -1,5 +1,6 @@
 import asyncio
 import base64
+from dataclasses import replace
 import importlib
 import io
 import json
@@ -139,6 +140,127 @@ class SongGuessTests(unittest.IsolatedAsyncioTestCase):
             "title_unicode": self.song.title_unicode, "artist": "Artist",
         })
         self.assertNotIn("contexts", request)
+
+    async def test_model_rate_limit_is_per_user_and_expires(self):
+        self.plugin.config.update(
+            song_guess_model_rate_limit_enabled=True,
+            song_guess_model_rate_limit_per_minute=2,
+        )
+        self.context.llm_generate.return_value.completion_text = "DIFFERENT"
+        self.plugin.config["command_prefixes"] = ["/", "!"]
+        await self.open_round()
+        other_room = self.answer_event("!作答 第三个别名", group="999")
+        other_session = guess.group_session(other_room)
+        self.game.rounds[other_session] = replace(
+            self.game.rounds[self.session], judged=set(), attempts=[], timer=None, submissions={},
+        )
+
+        async def submit(event):
+            results = [item async for item in self.plugin.handle_command(event)]
+            return results[0].chain[0].text
+
+        with patch.object(guess, "monotonic", return_value=100) as clock:
+            for alias in ("第一个别名", "第二个别名"):
+                self.assertEqual(await submit(self.answer_event(f"!作答 {alias}")),
+                                 "这次没猜中，可以继续答题。")
+            self.assertIn("请在 60 秒后再试", await submit(other_room))
+            self.assertEqual(self.context.llm_generate.await_count, 2)
+
+            other_user = self.answer_event("!作答 其他人的别名")
+            other_user.message_obj.sender.user_id = "200"
+            self.assertIn("没猜中", await submit(other_user))
+
+            local = self.answer_event(f"!作答 {self.song.title}")
+            self.assertIn("答对了", await submit(local))
+            self.assertEqual(self.context.llm_generate.await_count, 3)
+
+            clock.return_value = 160
+            self.assertIn("没猜中", await submit(other_room))
+            self.assertEqual(self.context.llm_generate.await_count, 4)
+
+    async def submit_answer(self, answer, group="123"):
+        event = self.answer_event(f"!作答 {answer}", group=group)
+        return [item async for item in self.plugin.handle_command(event)][0].chain[0].text
+
+    async def open_cooldown_round(self, **settings):
+        self.plugin.config.update(
+            command_prefixes=["/", "!"],
+            song_guess_model_rate_limit_mode="按判错次数",
+            **settings,
+        )
+        await self.open_round()
+
+    async def test_wrong_answer_cooldown_excludes_unsure_and_replaces_legacy_limit(self):
+        await self.open_cooldown_round(
+            song_guess_model_rate_limit_enabled=True,
+            song_guess_model_rate_limit_per_minute=1,
+            song_guess_model_cooldown_seconds=30,
+        )
+        with patch.object(guess, "monotonic", return_value=100) as clock:
+            for i, verdict in enumerate(("DIFFERENT", "UNSURE", "DIFFERENT", "DIFFERENT")):
+                self.context.llm_generate.return_value.completion_text = verdict
+                response = await self.submit_answer(f"别名{i}")
+                if i < 3:
+                    self.assertNotIn("冷却", response)
+            self.assertIn("冷却 30 秒", response)
+            self.assertIn("30 秒后再试", await self.submit_answer("下一个别名"))
+            self.assertEqual(self.context.llm_generate.await_count, 4)
+            clock.return_value = 130
+            self.assertNotIn("冷却", await self.submit_answer("下一个别名"))
+            self.assertEqual(self.context.llm_generate.await_count, 5)
+
+    async def test_repeated_answer_cooldown_crosses_groups_and_local_win_clears_it(self):
+        await self.open_cooldown_round()
+        self.context.llm_generate.return_value.completion_text = "UNSURE"
+        other_session = guess.group_session(self.answer_event("", group="999"))
+        self.game.rounds[other_session] = replace(
+            self.game.rounds[self.session], judged=set(), attempts=[], timer=None, submissions={},
+        )
+        with patch.object(guess, "monotonic", return_value=100):
+            self.assertIn("无法确认", await self.submit_answer("Example Name"))
+            self.assertIn("已经判定", await self.submit_answer("ＥＸＡＭＰＬＥ  NAME"))
+            self.assertIn("重复提交", await self.submit_answer("example name"))
+            self.assertIn("60 秒后再试", await self.submit_answer("另一个别名", group="999"))
+            self.assertEqual(self.context.llm_generate.await_count, 1)
+
+            event = self.answer_event(self.song.title, group="999")
+            results = [item async for item in self.plugin.handle_song_answer(event)]
+            self.assertIn("答对了", results[0].chain[0].text)
+            self.assertIn("无法确认", await self.submit_answer("另一个别名"))
+            self.assertEqual(self.context.llm_generate.await_count, 2)
+
+    async def test_repeated_submissions_outside_window_expire(self):
+        await self.open_cooldown_round()
+        self.context.llm_generate.return_value.completion_text = "UNSURE"
+        with patch.object(guess, "monotonic", return_value=100) as clock:
+            self.assertIn("无法确认", await self.submit_answer("同一个别名"))
+            self.assertIn("已经判定", await self.submit_answer("同一个别名"))
+
+            clock.return_value = 160
+            self.assertIn("已经判定", await self.submit_answer("同一个别名"))
+            self.assertIn("已经判定", await self.submit_answer("同一个别名"))
+            self.assertIn("重复提交", await self.submit_answer("同一个别名"))
+            self.assertEqual(self.context.llm_generate.await_count, 1)
+
+    async def test_cooldown_mode_allows_only_one_pending_model_call_per_user(self):
+        await self.open_cooldown_round()
+        started, release = asyncio.Event(), asyncio.Event()
+
+        async def judge(**kwargs):
+            started.set()
+            await release.wait()
+            return SimpleNamespace(completion_text="DIFFERENT")
+
+        self.context.llm_generate.side_effect = judge
+        pending = asyncio.create_task(self.submit_answer("第一个别名"))
+        try:
+            await asyncio.wait_for(started.wait(), timeout=1)
+            self.assertIn("正在判定", await asyncio.wait_for(self.submit_answer("第二个别名"), timeout=1))
+            self.assertEqual(self.context.llm_generate.await_count, 1)
+        finally:
+            release.set()
+            await pending
+        self.assertIn("没猜中", await self.submit_answer("第二个别名"))
 
     async def test_explicit_alias_uses_configured_song_guess_provider(self):
         self.plugin.config["song_guess_model_provider_id"] = "song-judge"
